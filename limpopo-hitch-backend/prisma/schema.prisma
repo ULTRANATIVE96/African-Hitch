@@ -1,0 +1,161 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              String   @id @default(uuid())
+  name            String
+  role            String   // "hiker" | "driver"
+  phone           String?
+  avatar          String?
+  rating          Float    @default(5.0)
+  completedRides  Int      @default(0)
+  email           String?  @unique
+  password        String?
+  googleEmail     String?
+  linkedUserId    String?
+  vehicle         String?
+  plate           String?
+  vehiclePhoto    String?
+  seats           Int?
+  profilePhoto    String?
+  banned          Boolean  @default(false)
+  verified        Boolean  @default(false)
+  verificationPin String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  posts            Post[]
+  requestsSent     RideRequest[] @relation("SentRequests")
+  requestsReceived RideRequest[] @relation("ReceivedRequests")
+  flagsReceived    Flag[]        @relation("FlaggedUser")
+  flagsReported    Flag[]        @relation("ReporterUser")
+  paymentsSent     Payment[]     @relation("PaymentsSent")
+  paymentsReceived Payment[]     @relation("PaymentsReceived")
+  reviewsReceived  Review[]      @relation("DriverReviews")
+  reviewsAuthored  Review[]      @relation("AuthorReviews")
+  comments         Comment[]
+
+  @@map("users")
+}
+
+model Post {
+  id           String      @id @default(uuid())
+  authorId     String
+  role         String      // "hiker" | "driver"
+  fromLocation String
+  toLocation   String
+  date         String
+  time         String      @default("06:00")
+  pricePerSeat Float
+  notes        String?
+  passengers   Int?
+  luggage      String?
+  specials     String?
+  specialsFee  Float?
+  seats        Int?
+  carPhoto     String?
+  open         Boolean     @default(true)
+  closedReason String?
+  createdAt    BigInt
+
+  author       User        @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  requests     RideRequest[]
+  payments     Payment[]
+  comments     Comment[]
+
+  @@map("posts")
+}
+
+model RideRequest {
+  id          String   @id @default(uuid())
+  postId      String
+  fromUserId  String
+  toUserId    String
+  status      String   @default("pending")
+  pickupPoint String?
+  createdAt   BigInt
+
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  fromUser    User     @relation("SentRequests", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser      User     @relation("ReceivedRequests", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@map("ride_requests")
+}
+
+model Flag {
+  id            String   @id @default(uuid())
+  flaggedUserId String
+  reporterId    String
+  reporterRole  String   // "hiker" | "driver"
+  reason        String
+  detail        String
+  createdAt     BigInt
+
+  flaggedUser   User     @relation("FlaggedUser", fields: [flaggedUserId], references: [id], onDelete: Cascade)
+  reporterUser  User     @relation("ReporterUser", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  @@map("flags")
+}
+
+model Payment {
+  id         String   @id @default(uuid())
+  postId     String
+  fromUserId String
+  toUserId   String
+  amount     Float
+  route      String
+  status     String   @default("completed")
+  createdAt  BigInt
+
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  fromUser   User     @relation("PaymentsSent", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser     User     @relation("PaymentsReceived", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  driverId  String
+  authorId  String
+  rating    Float
+  comment   String
+  createdAt BigInt
+
+  driver    User     @relation("DriverReviews", fields: [driverId], references: [id], onDelete: Cascade)
+  author    User     @relation("AuthorReviews", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("reviews")
+}
+
+model Appeal {
+  id        String   @id @default(uuid())
+  userId    String?
+  name      String
+  email     String
+  reason    String
+  flagIds   String?
+  status    String   @default("pending")
+  createdAt BigInt
+
+  @@map("appeals")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  postId    String
+  authorId  String
+  text      String
+  createdAt BigInt
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}

@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://hitch_admin:LimpopoHitch2026!@postgres:5432/hitchconnect?schema=public
+      - JWT_SECRET=limpopo-hitch-jwt-secret-key-prod-2026
+      - ADMIN_JWT_SECRET=limpopo-hitch-admin-jwt-secret-key-2026
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=secure_admin_password_here
+      - CORS_ORIGIN=*
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hitch_admin
+      POSTGRES_PASSWORD: LimpopoHitch2026!
+      POSTGRES_DB: hitchconnect
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hitch_admin -d hitchconnect"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
