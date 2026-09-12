@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { LogOut, Camera, Edit3, User as UserIcon, Car, Shield, Check, X, ArrowLeftRight } from "lucide-react";
-import { useCurrentUser, useUpdateProfile, useAllUsers, type Role } from "@/lib/api-hooks";
+import { LogOut, Camera, Edit3, User as UserIcon, Car, Shield, Check, X, ArrowLeftRight, Star, MessageSquare } from "lucide-react";
+import { useCurrentUser, useUpdateProfile, useAllUsers, useUserReviews, type Role } from "@/lib/api-hooks";
+import { UserAvatar } from "@/components/UserAvatar";
 import { clearSession } from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authenticated/profile")({
@@ -14,6 +15,7 @@ const EMOJI_AVATARS = ["😀", "🤠", "🚗", "🧕", "🧔", "🚙", "🚐", "
 function Profile() {
   const { data: me, isLoading } = useCurrentUser();
   const { data: allUsers = [] } = useAllUsers();
+  const { data: reviews = [], isLoading: reviewsLoading } = useUserReviews(me?.id || "");
   const updateProfile = useUpdateProfile();
   const navigate = useNavigate();
 
@@ -404,6 +406,102 @@ function Profile() {
             <LogOut className="h-4 w-4" /> Sign out
           </button>
         </div>
+      </div>
+
+      {/* ─── Previous Rides Reviews Section ─────────────────── */}
+      <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-4 border-border/70">
+          <div>
+            <h2 className="font-display text-lg font-semibold flex items-center gap-2 text-foreground">
+              <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+              Ride Reviews & Ratings
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Verified feedback from drivers and passengers from completed rides
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-3 py-1.5 rounded-full text-sm font-bold">
+              <Star className="h-4 w-4 fill-current" />
+              <span>{me.rating ? me.rating.toFixed(1) : "5.0"}</span>
+              <span className="text-xs font-normal opacity-75">
+                ({reviews.length} {reviews.length === 1 ? "review" : "reviews"})
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">{me.completedRides || 0}</span> completed rides
+            </div>
+          </div>
+        </div>
+
+        {reviewsLoading ? (
+          <div className="py-8 text-center text-xs text-muted-foreground">
+            Loading reviews...
+          </div>
+        ) : reviews.length === 0 ? (
+          <div className="text-center py-10 border border-dashed rounded-xl space-y-2 bg-secondary/10">
+            <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center mx-auto text-muted-foreground">
+              <Star className="h-5 w-5 text-muted-foreground/60" />
+            </div>
+            <div className="font-semibold text-sm text-foreground">No reviews yet</div>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              Reviews appear here automatically once you complete rides with accepted passengers or drivers.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {reviews.map((rev) => {
+              const revAuthor = rev.author || allUsers.find((u) => u.id === rev.authorId);
+              return (
+                <div key={rev.id} className="rounded-xl border bg-secondary/30 p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-full bg-secondary overflow-hidden flex items-center justify-center text-sm">
+                        {revAuthor ? (
+                          <UserAvatar
+                            user={revAuthor as any}
+                            className="h-full w-full object-cover flex items-center justify-center text-sm"
+                          />
+                        ) : (
+                          "👤"
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {revAuthor?.name ?? "Verified User"}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {new Date(rev.createdAt).toLocaleDateString([], {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={`h-3.5 w-3.5 ${
+                            star <= Math.round(rev.rating)
+                              ? "text-amber-500 fill-amber-500"
+                              : "text-muted-foreground/25"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  {rev.comment && (
+                    <p className="text-xs text-foreground/90 leading-relaxed bg-background/60 p-2.5 rounded-lg border border-border/40">
+                      "{rev.comment}"
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

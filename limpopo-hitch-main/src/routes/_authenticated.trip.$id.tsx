@@ -1,11 +1,16 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
-import { ArrowLeft, Check, X, ShieldAlert, MapPin, Navigation, MessageCircle, Star, Send, Trash2 } from "lucide-react";
+import {
+  ArrowLeft, Check, X, ShieldAlert, MapPin, Navigation,
+  MessageCircle, Star, Send, Trash2, CornerDownRight, MessageSquare,
+  ChevronDown, ChevronUp,
+} from "lucide-react";
 import {
   useCurrentUser, usePost, useAllUsers, useMyRequests,
   useFlags, useSendRequest, useUpdateRequest, useClosePost,
   useDeletePost, useAddFlag, useAddPayment, useAddComment,
-  useDeleteComment, useAddReview, type ApiComment,
+  useDeleteComment, useAddReview, useReplyToComment, useUserReviews,
+  type ApiComment,
 } from "@/lib/api-hooks";
 import { UserAvatar } from "@/components/UserAvatar";
 import { MapTilerMap } from "@/components/MapTilerMap";
@@ -42,12 +47,17 @@ function TripDetail() {
   const addPayment = useAddPayment();
   const addCommentMut = useAddComment();
   const deleteCommentMut = useDeleteComment();
+  const replyToCommentMut = useReplyToComment();
   const addReview = useAddReview();
 
   const post = postData;
   const comments: ApiComment[] = (postData as any)?.comments ?? [];
 
   const [commentText, setCommentText] = useState("");
+  const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [collapsedReplies, setCollapsedReplies] = useState<Record<string, boolean>>({});
+
   const [ratingStars, setRatingStars] = useState(5);
   const [ratingComment, setRatingComment] = useState("");
   const [showRatingForm, setShowRatingForm] = useState(false);
@@ -153,7 +163,29 @@ function TripDetail() {
     ? (myAcceptedHikerRequest ? users.find((u) => u.id === myAcceptedHikerRequest.fromUserId) : null)
     : author;
   const rideIsComplete = myCompletedRequest != null || (isMine && myAcceptedHikerRequest != null);
-  const alreadyRated = false; // handled server-side
+
+  const { data: targetReviews = [] } = useUserReviews(targetForRating?.id || "");
+  const alreadyRated = targetReviews.some(
+    (r) => r.authorId === me.id && (r.postId === post.id || !r.postId)
+  );
+
+  const totalCommentsCount = comments.reduce((acc, c) => acc + 1 + (c.replies?.length || 0), 0);
+
+  const handleReplySubmit = (commentId: string) => {
+    if (!replyText.trim()) return;
+    replyToCommentMut.mutate({
+      postId: post.id,
+      commentId,
+      text: replyText.trim(),
+    });
+    setReplyText("");
+    setReplyingToId(null);
+    setCollapsedReplies((prev) => ({ ...prev, [commentId]: false }));
+  };
+
+  const toggleReplies = (commentId: string) => {
+    setCollapsedReplies((prev) => ({ ...prev, [commentId]: !prev[commentId] }));
+  };
 
   // ── Handlers using API mutations ──────────────────────────────────────────
 
@@ -609,65 +641,6 @@ function TripDetail() {
         </div>
       )}
 
-      {/* Comments Section */}
-      <div className="rounded-2xl border bg-card p-5 shadow-sm space-y-4">
-        <h2 className="font-display text-base font-semibold flex items-center gap-1.5">
-          <MessageCircle className="h-4 w-4 text-primary" />
-          Comments ({comments.length})
-        </h2>
-        <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-          {comments.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-2">No comments yet. Be the first!</p>
-          )}
-          {comments
-            .sort((a, b) => a.createdAt - b.createdAt)
-            .map((c) => {
-              const commentAuthor = users.find((u) => u.id === c.authorId);
-              const isMyComment = c.authorId === me.id;
-              return (
-                <div key={c.id} className="flex gap-2.5 group">
-                  <div className="h-7 w-7 shrink-0 flex items-center justify-center rounded-full bg-secondary text-sm overflow-hidden">
-                    {commentAuthor && <UserAvatar user={commentAuthor} className="w-full h-full text-[11px] flex items-center justify-center rounded-full object-cover" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-semibold">{commentAuthor?.name ?? "Unknown"}</span>
-                      <span className="text-[10px] text-muted-foreground">{new Date(c.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                      {isMyComment && (
-                        <button
-                          onClick={() => handleDeleteComment(c.id)}
-                          disabled={deleteCommentMut.isPending}
-                          className="ml-auto opacity-0 group-hover:opacity-100 transition text-muted-foreground hover:text-destructive cursor-pointer disabled:opacity-40"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                    <p className="text-sm text-foreground/90 leading-relaxed">{c.text}</p>
-                  </div>
-                </div>
-              );
-            })}
-        </div>
-        <form onSubmit={handleAddComment} className="flex gap-2">
-          <input
-            type="text"
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Add a comment..."
-            maxLength={300}
-            className="flex-1 rounded-full border bg-secondary/40 px-4 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
-          />
-          <button
-            type="submit"
-            disabled={!commentText.trim() || addCommentMut.isPending}
-            className="h-9 w-9 flex items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40 cursor-pointer hover:bg-primary/90 transition"
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </form>
-      </div>
-
       {/* Post-ride Rating Card */}
       {rideIsComplete && targetForRating && !alreadyRated && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 shadow-sm space-y-3">
@@ -688,7 +661,8 @@ function TripDetail() {
                 e.preventDefault();
                 if (!ratingComment.trim()) return;
                 addReview.mutate({
-                  driverId: targetForRating.role === "driver" ? targetForRating.id : me.id,
+                  driverId: targetForRating.id,
+                  postId: post.id,
                   rating: ratingStars,
                   comment: ratingComment.trim(),
                 });
@@ -739,8 +713,13 @@ function TripDetail() {
       )}
 
       {rideIsComplete && targetForRating && alreadyRated && (
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-center text-xs text-emerald-600 font-medium">
-          ✅ You've already rated {targetForRating.name} for this ride.
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-center space-y-1">
+          <div className="text-emerald-600 font-semibold text-sm flex items-center justify-center gap-1.5">
+            <Check className="h-4 w-4" /> Review Submitted
+          </div>
+          <p className="text-xs text-muted-foreground">
+            You've already rated {targetForRating.name} for this ride. Thank you for keeping the community trustworthy!
+          </p>
         </div>
       )}
 
@@ -753,6 +732,270 @@ function TripDetail() {
           Flag {author.name} to the red list
         </button>
       )}
+
+      {/* ─── Social Media Style Comments & Discussion Section ───────────────── */}
+      <div className="rounded-2xl border bg-card p-5 shadow-sm space-y-5">
+        {/* Section Header */}
+        <div className="flex items-center justify-between border-b pb-3.5 border-border/70">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+              <MessageCircle className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="font-display text-base font-semibold text-foreground">
+                Comments & Discussion
+              </h2>
+              <p className="text-[11px] text-muted-foreground">
+                Ask questions, coordinate pickup spots, or connect with the organizer
+              </p>
+            </div>
+          </div>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-secondary text-foreground">
+            {totalCommentsCount} {totalCommentsCount === 1 ? "comment" : "comments"}
+          </span>
+        </div>
+
+        {/* Composer Box (Social Style) */}
+        <div className="flex items-start gap-3 bg-secondary/30 p-3 rounded-2xl border border-border/50">
+          <div className="h-8 w-8 shrink-0 rounded-full bg-secondary overflow-hidden flex items-center justify-center text-xs">
+            <UserAvatar user={me} className="h-full w-full object-cover flex items-center justify-center text-xs" />
+          </div>
+          <form onSubmit={handleAddComment} className="flex-1 flex gap-2">
+            <input
+              type="text"
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder={`Write a comment as ${me.name}...`}
+              maxLength={400}
+              className="flex-1 rounded-xl border bg-background px-3.5 py-2 text-sm outline-none focus:border-primary focus:ring-1 focus:ring-primary transition"
+            />
+            <button
+              type="submit"
+              disabled={!commentText.trim() || addCommentMut.isPending}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-40 transition cursor-pointer"
+            >
+              <Send className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Post</span>
+            </button>
+          </form>
+        </div>
+
+        {/* Comments Stream */}
+        <div className="space-y-4">
+          {comments.length === 0 ? (
+            <div className="py-8 text-center space-y-1.5 border border-dashed rounded-2xl border-border/70 bg-secondary/10">
+              <MessageSquare className="h-6 w-6 text-muted-foreground mx-auto opacity-50" />
+              <p className="text-sm font-medium text-foreground">No comments yet</p>
+              <p className="text-xs text-muted-foreground">
+                Be the first to start the conversation on this trip!
+              </p>
+            </div>
+          ) : (
+            comments
+              .sort((a, b) => a.createdAt - b.createdAt)
+              .map((c) => {
+                const commentAuthor = users.find((u) => u.id === c.authorId) || c.author;
+                const isCommentAuthorPostOwner = c.authorId === post.authorId;
+                const isMyComment = c.authorId === me.id;
+                const replies = c.replies || [];
+                const hasReplies = replies.length > 0;
+                const isReplying = replyingToId === c.id;
+                const areRepliesVisible = !collapsedReplies[c.id];
+
+                return (
+                  <div key={c.id} className="space-y-2.5">
+                    {/* Top-level Comment */}
+                    <div className="flex items-start gap-3 group">
+                      <div className="h-8 w-8 shrink-0 rounded-full bg-secondary overflow-hidden flex items-center justify-center text-xs mt-0.5">
+                        {commentAuthor && (
+                          <UserAvatar
+                            user={commentAuthor as any}
+                            className="h-full w-full object-cover flex items-center justify-center text-xs"
+                          />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        {/* Bubble */}
+                        <div className="rounded-2xl bg-secondary/60 px-3.5 py-2.5 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-semibold text-foreground">
+                                {commentAuthor?.name ?? "Community Member"}
+                              </span>
+                              {isCommentAuthorPostOwner && (
+                                <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold text-primary uppercase tracking-wide">
+                                  Organizer
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(c.createdAt).toLocaleDateString([], { month: "short", day: "numeric" })} · {new Date(c.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          <p className="text-sm text-foreground leading-relaxed break-words whitespace-pre-wrap">
+                            {c.text}
+                          </p>
+                        </div>
+
+                        {/* Action Bar */}
+                        <div className="flex items-center gap-4 px-2 pt-1 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReplyingToId(isReplying ? null : c.id);
+                              setReplyText("");
+                            }}
+                            className="font-medium text-primary hover:underline cursor-pointer flex items-center gap-1"
+                          >
+                            <MessageSquare className="h-3 w-3" />
+                            Reply
+                          </button>
+                          {hasReplies && (
+                            <button
+                              type="button"
+                              onClick={() => toggleReplies(c.id)}
+                              className="text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1 font-medium"
+                            >
+                              {areRepliesVisible ? (
+                                <>
+                                  <ChevronUp className="h-3 w-3" /> Hide {replies.length} {replies.length === 1 ? "reply" : "replies"}
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="h-3 w-3" /> View {replies.length} {replies.length === 1 ? "reply" : "replies"}
+                                </>
+                              )}
+                            </button>
+                          )}
+                          {(isMyComment || (me as any).isAdmin) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteComment(c.id)}
+                              disabled={deleteCommentMut.isPending}
+                              className="opacity-0 group-hover:opacity-100 transition text-muted-foreground hover:text-destructive cursor-pointer disabled:opacity-40 ml-auto"
+                              title="Delete comment"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Inline Reply Composer */}
+                        {isReplying && (
+                          <div className="mt-2.5 flex items-start gap-2.5 rounded-xl border border-primary/30 bg-primary/5 p-2.5">
+                            <div className="h-6 w-6 shrink-0 rounded-full bg-secondary overflow-hidden flex items-center justify-center text-[10px] mt-0.5">
+                              <UserAvatar user={me} className="h-full w-full object-cover flex items-center justify-center" />
+                            </div>
+                            <div className="flex-1 space-y-2">
+                              <div className="text-[11px] font-medium text-primary flex items-center gap-1">
+                                <CornerDownRight className="h-3 w-3" /> Replying to {commentAuthor?.name ?? "comment"}
+                              </div>
+                              <input
+                                type="text"
+                                value={replyText}
+                                onChange={(e) => setReplyText(e.target.value)}
+                                placeholder="Write a reply..."
+                                maxLength={300}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleReplySubmit(c.id);
+                                  }
+                                }}
+                                className="w-full rounded-lg border bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
+                              />
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReplyingToId(null);
+                                    setReplyText("");
+                                  }}
+                                  className="px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReplySubmit(c.id)}
+                                  disabled={!replyText.trim() || replyToCommentMut.isPending}
+                                  className="px-3 py-1 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition cursor-pointer"
+                                >
+                                  Reply
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Indented Replies Thread */}
+                        {hasReplies && areRepliesVisible && (
+                          <div className="border-l-2 border-primary/20 pl-3.5 ml-2.5 space-y-2.5 mt-2.5">
+                            {replies
+                              .sort((a, b) => a.createdAt - b.createdAt)
+                              .map((r) => {
+                                const replyAuthor = users.find((u) => u.id === r.authorId) || r.author;
+                                const isReplyAuthorPostOwner = r.authorId === post.authorId;
+                                const isMyReply = r.authorId === me.id;
+
+                                return (
+                                  <div key={r.id} className="flex items-start gap-2.5 group/reply">
+                                    <div className="h-6 w-6 shrink-0 rounded-full bg-secondary overflow-hidden flex items-center justify-center text-[10px] mt-0.5">
+                                      {replyAuthor && (
+                                        <UserAvatar
+                                          user={replyAuthor as any}
+                                          className="h-full w-full object-cover flex items-center justify-center text-[10px]"
+                                        />
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="rounded-xl bg-secondary/40 px-3 py-2 space-y-0.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="text-xs font-semibold text-foreground">
+                                              {replyAuthor?.name ?? "Community Member"}
+                                            </span>
+                                            {isReplyAuthorPostOwner && (
+                                              <span className="rounded bg-primary/15 px-1 py-0.2 text-[8px] font-bold text-primary uppercase">
+                                                Organizer
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="text-[9px] text-muted-foreground">
+                                            {new Date(r.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                          </span>
+                                        </div>
+                                        <p className="text-xs text-foreground leading-relaxed break-words whitespace-pre-wrap">
+                                          {r.text}
+                                        </p>
+                                      </div>
+                                      {(isMyReply || (me as any).isAdmin) && (
+                                        <div className="px-2 pt-0.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteComment(r.id)}
+                                            disabled={deleteCommentMut.isPending}
+                                            className="opacity-0 group-hover/reply:opacity-100 transition text-[10px] text-muted-foreground hover:text-destructive cursor-pointer disabled:opacity-40"
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+          )}
+        </div>
+      </div>
 
       {flagOpen && (
         <FlagDialog

@@ -39,6 +39,7 @@ router.delete("/posts/:id", requireAuth, postController.deletePost);
 
 // Post Comments
 router.post("/posts/:id/comments", requireAuth, postController.addComment);
+router.post("/posts/:id/comments/:commentId/replies", requireAuth, postController.replyToComment);
 router.delete("/posts/comments/:commentId", requireAuth, postController.deleteComment);
 
 // ── Ride Requests ─────────────────────────────────────────────────────────────
@@ -54,8 +55,9 @@ router.post("/flags", requireAuth, flagController.createFlag);
 router.get("/payments", requireAuth, paymentController.getMyPayments);
 router.post("/payments", requireAuth, paymentController.createPayment);
 
-// ── Driver Reviews ───────────────────────────────────────────────────────────
+// ── Driver & User Reviews ───────────────────────────────────────────────────
 router.get("/reviews", requireAuth, reviewController.getDriverReviews);
+router.get("/reviews/user/:userId", requireAuth, reviewController.getUserReviews);
 router.post("/reviews", requireAuth, reviewController.createReview);
 
 // ── Appeals ──────────────────────────────────────────────────────────────────

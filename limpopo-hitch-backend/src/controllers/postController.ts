@@ -43,6 +43,14 @@ export async function getFeed(req: AuthenticatedRequest, res: Response, next: Ne
   }
 }
 
+function serializeComment(c: any): any {
+  return {
+    ...c,
+    createdAt: Number(c.createdAt),
+    replies: c.replies ? c.replies.map(serializeComment) : [],
+  };
+}
+
 export async function getPostById(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const id = String(req.params.id);
@@ -63,8 +71,15 @@ export async function getPostById(req: AuthenticatedRequest, res: Response, next
           },
         },
         comments: {
+          where: { parentId: null },
           include: {
             author: { select: { id: true, name: true, avatar: true } },
+            replies: {
+              include: {
+                author: { select: { id: true, name: true, avatar: true } },
+              },
+              orderBy: { createdAt: "asc" },
+            },
           },
           orderBy: { createdAt: "asc" },
         },
@@ -75,10 +90,7 @@ export async function getPostById(req: AuthenticatedRequest, res: Response, next
 
     return res.json({
       ...serializePost(post),
-      comments: post.comments.map((c: any) => ({
-        ...c,
-        createdAt: Number(c.createdAt),
-      })),
+      comments: post.comments.map(serializeComment),
     });
   } catch (err) {
     next(err);
@@ -197,15 +209,60 @@ export async function addComment(req: AuthenticatedRequest, res: Response, next:
   try {
     const userId = req.userId!;
     const postId = String(req.params.id);
-    const { text } = req.body;
+    const { text, parentId } = req.body;
 
-    if (!text) return res.status(400).json({ error: "Comment text required" });
+    if (!text || !text.trim()) return res.status(400).json({ error: "Comment text required" });
+
+    if (parentId) {
+      const parent = await prisma.comment.findUnique({ where: { id: parentId } });
+      if (!parent) return res.status(404).json({ error: "Parent comment not found" });
+    }
 
     const comment = await prisma.comment.create({
       data: {
         postId,
         authorId: userId,
-        text,
+        text: text.trim(),
+        parentId: parentId || null,
+        createdAt: BigInt(Date.now()),
+      },
+      include: {
+        author: { select: { id: true, name: true, avatar: true } },
+        replies: {
+          include: {
+            author: { select: { id: true, name: true, avatar: true } },
+          },
+        },
+      },
+    });
+
+    return res.status(201).json(serializeComment(comment));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function replyToComment(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const userId = req.userId!;
+    const postId = String(req.params.id);
+    const commentId = String(req.params.commentId);
+    const { text } = req.body;
+
+    if (!text || !text.trim()) return res.status(400).json({ error: "Reply text required" });
+
+    const parentComment = await prisma.comment.findUnique({ where: { id: commentId } });
+    if (!parentComment) return res.status(404).json({ error: "Parent comment not found" });
+
+    // Link directly to parent or thread to top-level parent
+    const effectiveParentId = parentComment.parentId || parentComment.id;
+
+    const reply = await prisma.comment.create({
+      data: {
+        postId,
+        authorId: userId,
+        text: text.trim(),
+        parentId: effectiveParentId,
         createdAt: BigInt(Date.now()),
       },
       include: {
@@ -213,10 +270,7 @@ export async function addComment(req: AuthenticatedRequest, res: Response, next:
       },
     });
 
-    return res.status(201).json({
-      ...comment,
-      createdAt: Number(comment.createdAt),
-    });
+    return res.status(201).json(serializeComment(reply));
   } catch (err) {
     next(err);
   }

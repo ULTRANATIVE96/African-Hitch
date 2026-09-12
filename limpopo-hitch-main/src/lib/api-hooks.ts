@@ -82,9 +82,11 @@ export interface ApiReview {
   id: string;
   driverId: string;
   authorId: string;
+  postId?: string | null;
   rating: number;
   comment: string;
   createdAt: number;
+  author?: { id: string; name: string; avatar: string };
 }
 export interface ApiAppeal {
   id: string;
@@ -255,10 +257,18 @@ export function useDriverReviews(driverId: string) {
   });
 }
 
+export function useUserReviews(userId: string) {
+  return useQuery<ApiReview[]>({
+    queryKey: ["reviews", "user", userId],
+    queryFn: async () => (await api.get(`/reviews/user/${userId}`)).data,
+    enabled: typeof window !== "undefined" && !!userId,
+  });
+}
+
 export function useAddReview() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { driverId: string; rating: number; comment: string }) =>
+    mutationFn: (body: { driverId: string; rating: number; comment: string; postId?: string }) =>
       api.post("/reviews", body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["reviews"] });
@@ -304,15 +314,26 @@ export interface ApiComment {
   postId: string;
   authorId: string;
   text: string;
+  parentId?: string | null;
   createdAt: number;
   author?: { id: string; name: string; avatar: string };
+  replies?: ApiComment[];
 }
 
 export function useAddComment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ postId, text }: { postId: string; text: string }) =>
-      api.post(`/posts/${postId}/comments`, { text }),
+    mutationFn: ({ postId, text, parentId }: { postId: string; text: string; parentId?: string }) =>
+      api.post(`/posts/${postId}/comments`, { text, parentId }),
+    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ["posts", vars.postId] }),
+  });
+}
+
+export function useReplyToComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ postId, commentId, text }: { postId: string; commentId: string; text: string }) =>
+      api.post(`/posts/${postId}/comments/${commentId}/replies`, { text }),
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: ["posts", vars.postId] }),
   });
 }

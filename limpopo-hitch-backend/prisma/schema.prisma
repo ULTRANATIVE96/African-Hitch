@@ -124,6 +124,7 @@ model Review {
   id        String   @id @default(uuid())
   driverId  String
   authorId  String
+  postId    String?  // the completed ride this review is for
   rating    Float
   comment   String
   createdAt BigInt
@@ -131,6 +132,7 @@ model Review {
   driver    User     @relation("DriverReviews", fields: [driverId], references: [id], onDelete: Cascade)
   author    User     @relation("AuthorReviews", fields: [authorId], references: [id], onDelete: Cascade)
 
+  @@unique([authorId, driverId, postId]) // one review per person per ride
   @@map("reviews")
 }
 
@@ -148,14 +150,17 @@ model Appeal {
 }
 
 model Comment {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   postId    String
   authorId  String
   text      String
+  parentId  String?   // null = top-level comment; set = reply to a comment
   createdAt BigInt
 
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post      Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("CommentReplies")
 
   @@map("comments")
 }
