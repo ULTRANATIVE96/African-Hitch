@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { z } from "zod";
-import { Mountain, KeyRound, ArrowLeft, CheckCircle2, X } from "lucide-react";
+import { Mountain, KeyRound, ArrowLeft, CheckCircle2, X, Sparkles, Info } from "lucide-react";
 import { api, setSession } from "@/lib/api-client";
 
 const searchSchema = z.object({
@@ -21,8 +21,6 @@ export const Route = createFileRoute("/auth")({
 });
 
 type Role = "hiker" | "driver";
-type GoogleStep = "email" | "account_type" | "passwords";
-type AccountType = "rider" | "driver" | "both";
 
 function AuthPage() {
   const { role: initialRole, banned } = Route.useSearch();
@@ -38,11 +36,10 @@ function AuthPage() {
 
   const [googleDialogOpen, setGoogleDialogOpen] = useState(false);
   const [googleEmail, setGoogleEmail] = useState("");
-  const [hikerPass, setHikerPass] = useState("");
-  const [driverPass, setDriverPass] = useState("");
   const [googleName, setGoogleName] = useState("");
-  const [googleStep, setGoogleStep] = useState<GoogleStep>("email");
-  const [accountType, setAccountType] = useState<AccountType>("both");
+  const [googleRole, setGoogleRole] = useState<Role>(initialRole ?? "hiker");
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   const [verificationRequired, setVerificationRequired] = useState(false);
   const [pendingUserId, setPendingUserId] = useState("");
@@ -139,100 +136,136 @@ function AuthPage() {
     }
   };
 
-  const resetGoogleDialog = () => {
-    setGoogleDialogOpen(false);
-    setGoogleStep("email");
-    setGoogleEmail("");
-    setHikerPass("");
-    setDriverPass("");
-    setAccountType("both");
-    setGoogleName("");
+  const handleGoogleCredentialResponse = async (response: any) => {
+    if (!response?.credential) return;
+    setLoading(true);
+    setErrorMsg("");
+    try {
+      const res = await api.post("/auth/google", {
+        credential: response.credential,
+        role: role === "driver" ? "driver" : "hiker",
+      });
+      setSession(res.data.token, res.data.userId);
+      navigate({ to: "/feed" });
+    } catch (err: any) {
+      setErrorMsg(err.response?.data?.error || "Google sign-in failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleGoogleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg("");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
 
-    if (googleStep === "email") {
-      if (!googleEmail.trim()) return;
-      const generatedName = googleEmail
-        .split("@")[0]
-        .split(".")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ");
-      setGoogleName(generatedName);
-      setGoogleStep("account_type");
-    } else if (googleStep === "account_type") {
-      setGoogleStep("passwords");
-    } else {
-      // passwords step — create accounts via real API
-      setLoading(true);
-      let createdHikerId = "";
-      let createdHikerToken = "";
-      try {
-        if (accountType === "rider" || accountType === "both") {
-          if (!hikerPass) { alert("Please set a password for your Rider account."); return; }
-        }
-        if (accountType === "driver" || accountType === "both") {
-          if (!driverPass) { alert("Please set a password for your Driver account."); return; }
-        }
-
-        let hikerToken = "";
-        let hikerId = "";
-
-        if (accountType === "rider" || accountType === "both") {
-          const res = await api.post("/auth/register", {
-            name: accountType === "both" ? `${googleName} (Rider)` : googleName,
-            email: googleEmail.trim().toLowerCase(),
-            password: hikerPass,
-            role: "hiker",
+    const initGsi = () => {
+      const g = (window as any).google;
+      if (g?.accounts?.id && googleClientId) {
+        try {
+          g.accounts.id.initialize({
+            client_id: googleClientId,
+            callback: handleGoogleCredentialResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true,
           });
-          hikerToken = res.data.token;
-          hikerId = res.data.userId;
-          // Track so we can rollback if the driver step fails
-          if (accountType === "both") {
-            createdHikerId = hikerId;
-            createdHikerToken = hikerToken;
-          }
-        }
 
-        if (accountType === "driver" || accountType === "both") {
-          const driverEmail =
-            accountType === "both"
-              ? googleEmail.trim().toLowerCase().replace("@", "+driver@")
-              : googleEmail.trim().toLowerCase();
-          const res = await api.post("/auth/register", {
-            name: accountType === "both" ? `${googleName} (Driver)` : googleName,
-            email: driverEmail,
-            password: driverPass,
-            role: "driver",
-          });
-          if (accountType === "driver") {
-            hikerToken = res.data.token;
-            hikerId = res.data.userId;
-          }
-        }
-
-        resetGoogleDialog();
-        setSession(hikerToken, hikerId);
-        navigate({ to: "/feed" });
-      } catch (err: any) {
-        // If hiker was already created but driver failed, rollback the hiker account
-        if (createdHikerId && createdHikerToken) {
-          try {
-            await api.delete("/auth/rollback", {
-              data: { userId: createdHikerId, token: createdHikerToken },
+          const btnEl = document.getElementById("googleOfficialBtn");
+          if (btnEl) {
+            btnEl.innerHTML = "";
+            g.accounts.id.renderButton(btnEl, {
+              theme: "outline",
+              size: "large",
+              width: "100%",
+              text: "continue_with",
+              shape: "pill",
             });
-          } catch {
-            // Ignore rollback errors — registration error is the primary concern
           }
-          createdHikerId = "";
-          createdHikerToken = "";
+        } catch (err) {
+          console.warn("Google GSI initialization notice:", err);
         }
-        setErrorMsg(err.response?.data?.error || "Registration failed. Please try again.");
-      } finally {
-        setLoading(false);
       }
+    };
+
+    if ((window as any).google?.accounts?.id) {
+      initGsi();
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.onload = initGsi;
+      document.head.appendChild(script);
+    }
+  }, [googleClientId, role]);
+
+  const handleGoogleButtonClick = () => {
+    setErrorMsg("");
+    const g = (window as any).google;
+    if (googleClientId && g?.accounts?.id) {
+      try {
+        g.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            setGoogleDialogOpen(true);
+          }
+        });
+        return;
+      } catch (e) {
+        console.warn("GSI prompt notice:", e);
+      }
+    }
+    setGoogleDialogOpen(true);
+  };
+
+  const resetGoogleDialog = () => {
+    setGoogleDialogOpen(false);
+    setGoogleEmail("");
+    setGoogleName("");
+    setGoogleLoading(false);
+  };
+
+  const handleGoogleDirectSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!googleEmail.trim()) {
+      setErrorMsg("Please provide your Google email address.");
+      return;
+    }
+    setGoogleLoading(true);
+    setErrorMsg("");
+    try {
+      const res = await api.post("/auth/google", {
+        googleEmail: googleEmail.trim().toLowerCase(),
+        name: googleName.trim() || googleEmail.split("@")[0],
+        role: googleRole,
+      });
+
+      setSession(res.data.token, res.data.userId);
+      resetGoogleDialog();
+      navigate({ to: "/feed" });
+    } catch (err: any) {
+      setErrorMsg(err.response?.data?.error || "Google Sign-In failed. Please try again.");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleQuickGoogleSignIn = async (presetEmail: string, presetName: string, presetRole: Role) => {
+    setGoogleEmail(presetEmail);
+    setGoogleName(presetName);
+    setGoogleRole(presetRole);
+    setGoogleLoading(true);
+    setErrorMsg("");
+    try {
+      const res = await api.post("/auth/google", {
+        googleEmail: presetEmail.trim().toLowerCase(),
+        name: presetName,
+        role: presetRole,
+      });
+      setSession(res.data.token, res.data.userId);
+      resetGoogleDialog();
+      navigate({ to: "/feed" });
+    } catch (err: any) {
+      setErrorMsg(err.response?.data?.error || "Google Sign-In failed. Please try again.");
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -426,9 +459,13 @@ function AuthPage() {
               <div className="flex-grow border-t border-border"></div>
             </div>
 
+            {googleClientId && (
+              <div id="googleOfficialBtn" className="w-full flex justify-center mb-2 min-h-[40px]" />
+            )}
+
             <button
               type="button"
-              onClick={() => { setErrorMsg(""); setGoogleDialogOpen(true); }}
+              onClick={handleGoogleButtonClick}
               className="w-full flex items-center justify-center gap-2.5 rounded-full border border-border bg-card py-2.5 text-sm font-semibold text-foreground transition hover:bg-secondary cursor-pointer shadow-sm"
             >
               <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
@@ -450,79 +487,147 @@ function AuthPage() {
         </p>
       </div>
 
+      {/* Google Authentication Dialog */}
       {googleDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-xl border text-left">
-            <div className="flex items-center gap-2 mb-4">
-              <svg className="h-5 w-5" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.48-1.12 2.73-2.38 3.58v2.98h3.84c2.24-2.06 3.68-5.1 3.68-8.39z" />
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-2.98c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.08c1.98 3.93 6.02 6.66 10.68 6.66z" />
-                <path fill="#FBBC05" d="M5.24 14.26c-.25-.72-.39-1.5-.39-2.3s.14-1.58.39-2.3V6.58H1.32c-.84 1.68-1.32 3.56-1.32 5.5s.48 3.82 1.32 5.5l3.92-3.08z" />
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.93 1.19 15.24 0 12 0 7.34 0 3.3 2.73 1.32 6.66l3.92 3.08c.95-2.88 3.61-5.01 6.76-5.01z" />
-              </svg>
-              <h2 className="font-display text-lg font-bold">
-                {googleStep === "email" ? "Google Account Setup" : googleStep === "account_type" ? "Choose Account Type" : "Set Passwords"}
-              </h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl border text-left">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/80 border">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.48-1.12 2.73-2.38 3.58v2.98h3.84c2.24-2.06 3.68-5.1 3.68-8.39z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-2.98c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.08c1.98 3.93 6.02 6.66 10.68 6.66z" />
+                    <path fill="#FBBC05" d="M5.24 14.26c-.25-.72-.39-1.5-.39-2.3s.14-1.58.39-2.3V6.58H1.32c-.84 1.68-1.32 3.56-1.32 5.5s.48 3.82 1.32 5.5l3.92-3.08z" />
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.93 1.19 15.24 0 12 0 7.34 0 3.3 2.73 1.32 6.66l3.92 3.08c.95-2.88 3.61-5.01 6.76-5.01z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="font-display text-base font-bold text-foreground">
+                    Sign In with Google
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Safe, password-free login via Limpopo Hitch Connect
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={resetGoogleDialog}
+                className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-secondary transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
-            <div className="flex gap-1.5 mb-5">
-              {(["email", "account_type", "passwords"] as GoogleStep[]).map((step, i) => (
-                <div key={step} className={`h-1.5 flex-1 rounded-full transition-colors ${["email", "account_type", "passwords"].indexOf(googleStep) >= i ? "bg-primary" : "bg-muted"}`} />
-              ))}
+            {/* Role selector */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                Select Your Role
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setGoogleRole("hiker")}
+                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${
+                    googleRole === "hiker"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:border-primary/40 text-muted-foreground"
+                  }`}
+                >
+                  <span>🧳</span> Rider / Passenger
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGoogleRole("driver")}
+                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${
+                    googleRole === "driver"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:border-primary/40 text-muted-foreground"
+                  }`}
+                >
+                  <span>🚐</span> Driver
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={handleGoogleSubmit} className="space-y-4">
-              {googleStep === "email" && (
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">Sign in or sign up with your Google account email.</p>
-                  <div>
-                    <label className="block text-xs font-semibold text-muted-foreground mb-1">Google Email</label>
-                    <input type="email" required value={googleEmail} onChange={(e) => setGoogleEmail(e.target.value)} placeholder="e.g. thabo@gmail.com" className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
-                  </div>
-                </div>
-              )}
+            <form onSubmit={handleGoogleDirectSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                  Google Account Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={googleEmail}
+                  onChange={(e) => setGoogleEmail(e.target.value)}
+                  placeholder="e.g. thabo@gmail.com"
+                  className="w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary transition"
+                />
+              </div>
 
-              {googleStep === "account_type" && (
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">Welcome, <span className="font-semibold text-foreground">{googleName}</span>! Choose what type of account(s) to create.</p>
-                  <div className="grid gap-3">
-                    {([{ value: "rider" as AccountType, emoji: "🧳", label: "Rider only", sub: "I need rides" }, { value: "driver" as AccountType, emoji: "🚐", label: "Driver only", sub: "I offer rides" }, { value: "both" as AccountType, emoji: "🔗", label: "Both (linked)", sub: "Rider + Driver accounts" }]).map(({ value, emoji, label, sub }) => (
-                      <button key={value} type="button" onClick={() => setAccountType(value)} className={`flex items-center gap-3 rounded-xl border-2 p-3.5 text-left transition ${accountType === value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
-                        <span className="text-2xl">{emoji}</span>
-                        <div>
-                          <div className="font-semibold text-sm">{label}</div>
-                          <div className="text-xs text-muted-foreground">{sub}</div>
-                        </div>
-                        {accountType === value && <span className="ml-auto text-primary text-lg">✓</span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                  Your Full Name <span className="font-normal text-muted-foreground/80">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={googleName}
+                  onChange={(e) => setGoogleName(e.target.value)}
+                  placeholder="e.g. Thabo Mokoena"
+                  className="w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary transition"
+                />
+              </div>
 
-              {googleStep === "passwords" && (
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">Set a password for your account(s).</p>
-                  <div className="text-xs font-semibold text-muted-foreground">Email: <span className="text-foreground">{googleEmail}</span></div>
-                  {(accountType === "rider" || accountType === "both") && (
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">🧳 Rider Account Password</label>
-                      <input type="password" required value={hikerPass} onChange={(e) => setHikerPass(e.target.value)} placeholder="Set rider password" className="w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-                    </div>
-                  )}
-                  {(accountType === "driver" || accountType === "both") && (
-                    <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">🚐 Driver Account Password</label>
-                      <input type="password" required value={driverPass} onChange={(e) => setDriverPass(e.target.value)} placeholder="Set driver password" className="w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-                    </div>
-                  )}
+              {/* Quick Fill One-Click Demo accounts */}
+              <div className="rounded-xl border bg-secondary/30 p-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground mb-2">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                  <span>One-Click Quick Sign In</span>
                 </div>
-              )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickGoogleSignIn("thabo.mokoena@gmail.com", "Thabo Mokoena", "hiker")}
+                    className="flex flex-col items-start rounded-lg border bg-card p-2 text-left hover:border-primary/50 transition cursor-pointer"
+                  >
+                    <span className="text-xs font-semibold">🧳 Thabo M.</span>
+                    <span className="text-[10px] text-muted-foreground truncate w-full">thabo.mokoena@gmail.com</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickGoogleSignIn("kagiso.driver@gmail.com", "Kagiso Ndlovu", "driver")}
+                    className="flex flex-col items-start rounded-lg border bg-card p-2 text-left hover:border-primary/50 transition cursor-pointer"
+                  >
+                    <span className="text-xs font-semibold">🚐 Kagiso N.</span>
+                    <span className="text-[10px] text-muted-foreground truncate w-full">kagiso.driver@gmail.com</span>
+                  </button>
+                </div>
+              </div>
 
-              <div className="flex gap-2.5 pt-2">
-                <button type="button" onClick={resetGoogleDialog} className="flex-1 rounded-full bg-muted py-2.5 text-xs font-medium cursor-pointer">Cancel</button>
-                <button type="submit" disabled={loading} className="flex-1 rounded-full bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/95 cursor-pointer disabled:opacity-50">
-                  {loading ? "..." : googleStep === "passwords" ? "Create Account" : "Next"}
+              {/* Production Note */}
+              <div className="flex items-start gap-2 rounded-xl bg-muted/40 p-2.5 text-[11px] text-muted-foreground">
+                <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+                <span>
+                  {googleClientId
+                    ? "Official Google Identity Services is linked to your Google Client ID."
+                    : "For automatic Google popups in production, set VITE_GOOGLE_CLIENT_ID in your .env"}
+                </span>
+              </div>
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={resetGoogleDialog}
+                  className="flex-1 rounded-full bg-muted py-2.5 text-xs font-semibold cursor-pointer hover:bg-muted/80 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={googleLoading}
+                  className="flex-1 rounded-full bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/95 cursor-pointer disabled:opacity-50 transition shadow-sm"
+                >
+                  {googleLoading ? "Signing in..." : "Continue with Google"}
                 </button>
               </div>
             </form>

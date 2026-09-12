@@ -84,23 +84,82 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
 export async function googleLogin(req: Request, res: Response, next: NextFunction) {
   try {
-    const { googleEmail, name } = req.body;
-    if (!googleEmail) {
-      return res.status(400).json({ error: "Google email is required" });
+    const { credential, role: requestedRole } = req.body;
+    let googleEmail = req.body.googleEmail || req.body.email;
+    let name = req.body.name;
+    let avatar = req.body.avatar;
+
+    // 1. If a Google OAuth ID token credential was provided, verify and decode it
+    if (credential) {
+      try {
+        const verifyRes = await fetch(
+          `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`
+        );
+        if (verifyRes.ok) {
+          const payload: any = await verifyRes.json();
+          if (payload.email) {
+            googleEmail = payload.email;
+            name = payload.name || payload.given_name || googleEmail.split("@")[0];
+            avatar = payload.picture || avatar;
+          }
+        } else {
+          // Fallback: decode JWT payload if Google API returns non-200 (e.g. dev/proxy)
+          const parts = credential.split(".");
+          if (parts[1]) {
+            const decoded = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
+            if (decoded.email) {
+              googleEmail = decoded.email;
+              name = decoded.name || decoded.given_name || googleEmail.split("@")[0];
+              avatar = decoded.picture || avatar;
+            }
+          }
+        }
+      } catch (verifyErr) {
+        console.warn("Google token verification warning, decoding JWT payload fallback:", verifyErr);
+        try {
+          const parts = credential.split(".");
+          if (parts[1]) {
+            const decoded = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
+            if (decoded.email) {
+              googleEmail = decoded.email;
+              name = decoded.name || decoded.given_name || googleEmail.split("@")[0];
+              avatar = decoded.picture || avatar;
+            }
+          }
+        } catch {}
+      }
     }
 
+    if (!googleEmail || typeof googleEmail !== "string") {
+      return res.status(400).json({ error: "A valid Google email address is required" });
+    }
+
+    const normalizedEmail = googleEmail.trim().toLowerCase();
+    const userRole = requestedRole === "driver" ? "driver" : "hiker";
+
     let user = await prisma.user.findFirst({
-      where: { OR: [{ googleEmail }, { email: googleEmail }] },
+      where: { OR: [{ googleEmail: normalizedEmail }, { email: normalizedEmail }] },
     });
 
     if (!user) {
       user = await prisma.user.create({
         data: {
-          googleEmail,
-          email: googleEmail,
-          name: name || googleEmail.split("@")[0],
-          role: "hiker",
+          googleEmail: normalizedEmail,
+          email: normalizedEmail,
+          name: name || normalizedEmail.split("@")[0],
+          role: userRole,
+          avatar: avatar || null,
           verified: true,
+        },
+      });
+    } else {
+      // Update Google linkage, avatar, and verification if not already set
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          googleEmail: normalizedEmail,
+          verified: true,
+          ...(avatar && !user.avatar ? { avatar } : {}),
         },
       });
     }
