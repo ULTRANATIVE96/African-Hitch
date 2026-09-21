@@ -8,6 +8,7 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   server: {
+    // Local dev only: proxies /api to the backend so there are no CORS issues
     proxy: {
       "/api": {
         target: "http://localhost:8081",
@@ -17,10 +18,12 @@ export default defineConfig({
   },
   plugins: [
     tanstackStart({
-      server: { entry: "server" },
+      server: {
+        entry: "server",
+        // Vercel auto-detects TanStack Start and applies the correct Nitro preset
+      },
     }),
     viteReact(),
     tailwindcss(),
   ],
 });
-

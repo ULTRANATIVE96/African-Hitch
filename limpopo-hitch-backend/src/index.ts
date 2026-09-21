@@ -13,9 +13,18 @@ const server = http.createServer(app);
 
 // ── Security & Core Middleware ───────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
+
+// Support comma-separated origins (e.g. "https://hitchconnect.co.za,https://app.vercel.app")
+const corsOrigin: string | string[] | boolean =
+  ENV.CORS_ORIGIN === "*"
+    ? true
+    : ENV.CORS_ORIGIN.includes(",")
+      ? ENV.CORS_ORIGIN.split(",").map((o) => o.trim())
+      : ENV.CORS_ORIGIN;
+
 app.use(
   cors({
-    origin: ENV.CORS_ORIGIN === "*" ? true : ENV.CORS_ORIGIN,
+    origin: corsOrigin,
     credentials: true,
   })
 );
@@ -25,7 +34,7 @@ app.use(express.urlencoded({ limit: "25mb", extended: true }));
 // ── Socket.io Setup ──────────────────────────────────────────────────────────
 const io = new Server(server, {
   cors: {
-    origin: ENV.CORS_ORIGIN === "*" ? true : ENV.CORS_ORIGIN,
+    origin: corsOrigin,
     methods: ["GET", "POST"],
   },
 });
