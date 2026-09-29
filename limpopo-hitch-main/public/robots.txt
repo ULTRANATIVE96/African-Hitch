@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /dac-admin
+
+Sitemap: https://hitchconnect.co.za/sitemap.xml

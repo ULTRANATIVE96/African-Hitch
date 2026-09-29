@@ -95,29 +95,41 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Limpopo Hike Connect" },
+      { title: "African Hitch & Lift Connect | Rides, Hitching & Transport Across Africa" },
       {
         name: "description",
         content:
-          "Safer hikes across the provinces — connect with trusted drivers and travelers in Limpopo.",
+          "Need a ride, lift, or transport in Africa? African Hitch Connect is the trusted platform for safe hitching, ridesharing, and provincial lifts across Limpopo, South Africa, and Africa. Connect with verified drivers and passengers today.",
       },
-      { name: "author", content: "Limpopo Hike Connect" },
-      { property: "og:title", content: "Limpopo Hike Connect" },
+      {
+        name: "keywords",
+        content:
+          "hitching, lift, ride, transport needed, lift needed, ride needed, hitching africa, african hitch, ride sharing africa, carpool south africa, transport limpopo, african rides, lifts across provinces, hitchhikers africa, travel africa, african transport, safe hitching, hitch connect, hitching lift, lift needed south africa, african rideshare",
+      },
+      { name: "author", content: "DAC Technology — African Hitch & Lift Connect" },
+      { name: "robots", content: "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" },
+      { property: "og:site_name", content: "African Hitch & Lift Connect" },
+      { property: "og:title", content: "African Hitch & Lift Connect — Rides, Hitching & Transport Across Africa" },
       {
         property: "og:description",
         content:
-          "Safer hikes across the provinces — connect with trusted drivers and travelers in Limpopo.",
+          "Looking for a lift or transport in Africa? Connect with trusted drivers and travelers. Safe hitching, shared rides, and real-time trip tracking across Africa.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "Limpopo Hike Connect" },
+      { property: "og:locale", content: "en_ZA" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "African Hitch & Lift Connect — Safe Rides & Transport in Africa" },
       {
         name: "twitter:description",
         content:
-          "Safer hikes across the provinces — connect with trusted drivers and travelers in Limpopo.",
+          "Need a ride, lift, or transport in Africa? Join African Hitch Connect for safe hitching and trusted rides across the provinces.",
       },
+      { name: "application-name", content: "African Hitch Connect" },
+      { name: "geo.region", content: "ZA-LP" },
+      { name: "geo.placename", content: "Limpopo, South Africa, Africa" },
     ],
     links: [
+      { rel: "canonical", href: "https://hitchconnect.co.za" },
       { rel: "manifest", href: "/manifest.json" },
       {
         rel: "stylesheet",
@@ -131,6 +143,30 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
     ],
     scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          "name": "African Hitch & Lift Connect",
+          "alternateName": ["African Hitch", "HikeConnect", "Limpopo Hitch Connect"],
+          "url": "https://hitchconnect.co.za",
+          "description": "Safe hitching, lifts, rides, and reliable transport across Limpopo, South Africa, and Africa. Connects drivers offering rides with travelers needing transport.",
+          "applicationCategory": "TravelApplication",
+          "operatingSystem": "All",
+          "areaServed": [
+            { "@type": "AdministrativeArea", "name": "Limpopo" },
+            { "@type": "Country", "name": "South Africa" },
+            { "@type": "Continent", "name": "Africa" }
+          ],
+          "keywords": "hitching, lift, ride, transport needed, lift needed, ride needed, hitching africa, african hitch, ride sharing africa",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "ZAR"
+          }
+        }),
+      },
       {
         src: "https://accounts.google.com/gsi/client",
         async: true,

@@ -1,7 +1,7 @@
 {
-  "name": "Limpopo Hike Connect",
-  "short_name": "HikeConnect",
-  "description": "Connect with trusted drivers and travelers in Limpopo.",
+  "name": "African Hitch & Lift Connect",
+  "short_name": "African Hitch",
+  "description": "Safe hitching, lifts, rides, and reliable transport across Limpopo, South Africa, and Africa.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f0f1a",
