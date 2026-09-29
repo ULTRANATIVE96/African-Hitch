@@ -34,11 +34,18 @@ function AuthPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const [googleDialogOpen, setGoogleDialogOpen] = useState(false);
-  const [googleEmail, setGoogleEmail] = useState("");
-  const [googleName, setGoogleName] = useState("");
-  const [googleRole, setGoogleRole] = useState<Role>(initialRole ?? "hiker");
-  const [googleLoading, setGoogleLoading] = useState(false);
+  // Dedicated Google Sign In Dialog state
+  const [signInGoogleOpen, setSignInGoogleOpen] = useState(false);
+  const [signInGoogleEmail, setSignInGoogleEmail] = useState("");
+  const [signInGoogleLoading, setSignInGoogleLoading] = useState(false);
+
+  // Dedicated Google Sign Up / Register Dialog state
+  const [signUpGoogleOpen, setSignUpGoogleOpen] = useState(false);
+  const [signUpGoogleEmail, setSignUpGoogleEmail] = useState("");
+  const [signUpGoogleName, setSignUpGoogleName] = useState("");
+  const [signUpGoogleRole, setSignUpGoogleRole] = useState<Role>(initialRole ?? "hiker");
+  const [signUpGoogleLoading, setSignUpGoogleLoading] = useState(false);
+
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   const [verificationRequired, setVerificationRequired] = useState(false);
@@ -144,11 +151,12 @@ function AuthPage() {
       const res = await api.post("/auth/google", {
         credential: response.credential,
         role: role === "driver" ? "driver" : "hiker",
+        mode,
       });
       setSession(res.data.token, res.data.userId);
       navigate({ to: "/feed" });
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.error || "Google sign-in failed. Please try again.");
+      setErrorMsg(err.response?.data?.error || "Google authentication failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -168,14 +176,14 @@ function AuthPage() {
             cancel_on_tap_outside: true,
           });
 
-          const btnEl = document.getElementById("googleOfficialBtn");
+          const btnEl = document.getElementById(mode === "signin" ? "googleSignInOfficialBtn" : "googleSignUpOfficialBtn");
           if (btnEl) {
             btnEl.innerHTML = "";
             g.accounts.id.renderButton(btnEl, {
               theme: "outline",
               size: "large",
               width: "100%",
-              text: "continue_with",
+              text: mode === "signin" ? "signin_with" : "signup_with",
               shape: "pill",
             });
           }
@@ -195,16 +203,17 @@ function AuthPage() {
       script.onload = initGsi;
       document.head.appendChild(script);
     }
-  }, [googleClientId, role]);
+  }, [googleClientId, role, mode]);
 
-  const handleGoogleButtonClick = () => {
+  // Trigger Google Sign In
+  const handleOpenGoogleSignIn = () => {
     setErrorMsg("");
     const g = (window as any).google;
     if (googleClientId && g?.accounts?.id) {
       try {
         g.accounts.id.prompt((notification: any) => {
           if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            setGoogleDialogOpen(true);
+            setSignInGoogleOpen(true);
           }
         });
         return;
@@ -212,60 +221,124 @@ function AuthPage() {
         console.warn("GSI prompt notice:", e);
       }
     }
-    setGoogleDialogOpen(true);
+    setSignInGoogleOpen(true);
   };
 
-  const resetGoogleDialog = () => {
-    setGoogleDialogOpen(false);
-    setGoogleEmail("");
-    setGoogleName("");
-    setGoogleLoading(false);
+  // Trigger Google Sign Up / Register
+  const handleOpenGoogleSignUp = () => {
+    setErrorMsg("");
+    const g = (window as any).google;
+    if (googleClientId && g?.accounts?.id) {
+      try {
+        g.accounts.id.prompt((notification: any) => {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            setSignUpGoogleRole(role);
+            setSignUpGoogleOpen(true);
+          }
+        });
+        return;
+      } catch (e) {
+        console.warn("GSI prompt notice:", e);
+      }
+    }
+    setSignUpGoogleRole(role);
+    setSignUpGoogleOpen(true);
   };
 
-  const handleGoogleDirectSubmit = async (e: React.FormEvent) => {
+  // Submit Sign In with Google
+  const handleSignInGoogleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!googleEmail.trim()) {
-      setErrorMsg("Please provide your Google email address.");
+    if (!signInGoogleEmail.trim()) {
+      setErrorMsg("Please enter your Google email address.");
       return;
     }
-    setGoogleLoading(true);
+    setSignInGoogleLoading(true);
     setErrorMsg("");
     try {
       const res = await api.post("/auth/google", {
-        googleEmail: googleEmail.trim().toLowerCase(),
-        name: googleName.trim() || googleEmail.split("@")[0],
-        role: googleRole,
+        googleEmail: signInGoogleEmail.trim().toLowerCase(),
+        mode: "signin",
       });
-
       setSession(res.data.token, res.data.userId);
-      resetGoogleDialog();
+      setSignInGoogleOpen(false);
       navigate({ to: "/feed" });
     } catch (err: any) {
       setErrorMsg(err.response?.data?.error || "Google Sign-In failed. Please try again.");
     } finally {
-      setGoogleLoading(false);
+      setSignInGoogleLoading(false);
     }
   };
 
-  const handleQuickGoogleSignIn = async (presetEmail: string, presetName: string, presetRole: Role) => {
-    setGoogleEmail(presetEmail);
-    setGoogleName(presetName);
-    setGoogleRole(presetRole);
-    setGoogleLoading(true);
+  // Submit Sign Up with Google
+  const handleSignUpGoogleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signUpGoogleEmail.trim()) {
+      setErrorMsg("Please enter your Google email address.");
+      return;
+    }
+    setSignUpGoogleLoading(true);
     setErrorMsg("");
     try {
       const res = await api.post("/auth/google", {
-        googleEmail: presetEmail.trim().toLowerCase(),
-        name: presetName,
-        role: presetRole,
+        googleEmail: signUpGoogleEmail.trim().toLowerCase(),
+        name: signUpGoogleName.trim() || signUpGoogleEmail.split("@")[0],
+        role: signUpGoogleRole,
+        mode: "signup",
+        phone: phone || undefined,
+        vehicle: vehicle || undefined,
+        plate: plate || undefined,
+        seats: seats ? parseInt(seats, 10) : undefined,
       });
       setSession(res.data.token, res.data.userId);
-      resetGoogleDialog();
+      setSignUpGoogleOpen(false);
       navigate({ to: "/feed" });
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.error || "Google Sign-In failed. Please try again.");
+      setErrorMsg(err.response?.data?.error || "Google registration failed. Please try again.");
     } finally {
-      setGoogleLoading(false);
+      setSignUpGoogleLoading(false);
+    }
+  };
+
+  // Quick Demo account actions
+  const handleQuickSignIn = async (email: string) => {
+    setSignInGoogleEmail(email);
+    setSignInGoogleLoading(true);
+    setErrorMsg("");
+    try {
+      const res = await api.post("/auth/google", {
+        googleEmail: email.trim().toLowerCase(),
+        mode: "signin",
+      });
+      setSession(res.data.token, res.data.userId);
+      setSignInGoogleOpen(false);
+      navigate({ to: "/feed" });
+    } catch (err: any) {
+      setErrorMsg(err.response?.data?.error || "Sign-In failed.");
+    } finally {
+      setSignInGoogleLoading(false);
+    }
+  };
+
+  const handleQuickSignUp = async (email: string, name: string, r: Role) => {
+    setSignUpGoogleEmail(email);
+    setSignUpGoogleName(name);
+    setSignUpGoogleRole(r);
+    setSignUpGoogleLoading(true);
+    setErrorMsg("");
+    try {
+      const res = await api.post("/auth/google", {
+        googleEmail: email.trim().toLowerCase(),
+        name,
+        role: r,
+        mode: "signup",
+      });
+      setSession(res.data.token, res.data.userId);
+      setSignUpGoogleOpen(false);
+      navigate({ to: "/feed" });
+    } catch (err: any) {
+      setErrorMsg(err.response?.data?.error || "Registration failed.");
+    } finally {
+      setSignUpGoogleLoading(false);
     }
   };
 
@@ -403,80 +476,172 @@ function AuthPage() {
           <div className="mb-6 grid grid-cols-2 gap-1 rounded-full bg-muted p-1 text-sm font-medium">
             <button
               onClick={() => setMode("signup")}
-              className={`rounded-full py-2 transition ${mode === "signup" ? "bg-card text-foreground shadow" : "text-muted-foreground"}`}
+              className={`rounded-full py-2 transition font-semibold ${mode === "signup" ? "bg-card text-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
             >
               Create account
             </button>
             <button
               onClick={() => setMode("signin")}
-              className={`rounded-full py-2 transition ${mode === "signin" ? "bg-card text-foreground shadow" : "text-muted-foreground"}`}
+              className={`rounded-full py-2 transition font-semibold ${mode === "signin" ? "bg-card text-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
             >
               Sign in
             </button>
           </div>
 
-          <p className="mb-3 text-sm font-medium">I am a</p>
-          <div className="mb-5 grid grid-cols-2 gap-3">
-            <RoleCard active={role === "hiker"} onClick={() => setRole("hiker")} emoji="🧳" label="Hiker" sub="I need rides" />
-            <RoleCard active={role === "driver"} onClick={() => setRole("driver")} emoji="🚐" label="Driver" sub="I offer rides" />
-          </div>
+          {/* ══════════════════════════════════════════════════════════════
+              VIEW 1: SIGN IN MODE (Pure Login)
+              ══════════════════════════════════════════════════════════════ */}
+          {mode === "signin" && (
+            <div>
+              {/* Distinct Google Sign In Card */}
+              <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4 mb-5 text-center shadow-xs">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <div className="h-6 w-6 rounded-full bg-background border flex items-center justify-center shadow-xs">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.48-1.12 2.73-2.38 3.58v2.98h3.84c2.24-2.06 3.68-5.1 3.68-8.39z" />
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-2.98c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.08c1.98 3.93 6.02 6.66 10.68 6.66z" />
+                      <path fill="#FBBC05" d="M5.24 14.26c-.25-.72-.39-1.5-.39-2.3s.14-1.58.39-2.3V6.58H1.32c-.84 1.68-1.32 3.56-1.32 5.5s.48 3.82 1.32 5.5l3.92-3.08z" />
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.93 1.19 15.24 0 12 0 7.34 0 3.3 2.73 1.32 6.66l3.92 3.08c.95-2.88 3.61-5.01 6.76-5.01z" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-bold text-foreground">Sign In with Google</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mb-3">
+                  Log in directly to your registered Google account
+                </p>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {mode === "signup" && (
-              <Field label="Full name" value={name} onChange={setName} placeholder="Naledi Sithole" />
-            )}
-            <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
-            <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
-            {mode === "signin" && (
-              <div className="flex justify-end -mt-1 pb-1">
+                {googleClientId && (
+                  <div id="googleSignInOfficialBtn" className="w-full flex justify-center mb-2 min-h-[40px]" />
+                )}
+
                 <button
                   type="button"
-                  onClick={() => {
-                    setErrorMsg("");
-                    setForgotEmail(email || "");
-                    setForgotStep("email");
-                    setForgotError("");
-                    setForgotSuccess("");
-                    setForgotModalOpen(true);
-                  }}
-                  className="text-xs text-primary hover:underline font-medium cursor-pointer"
+                  onClick={handleOpenGoogleSignIn}
+                  className="w-full flex items-center justify-center gap-2.5 rounded-full border border-border bg-card py-2.5 text-xs font-semibold text-foreground transition hover:bg-secondary cursor-pointer shadow-sm"
                 >
-                  Forgot password?
+                  <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.48-1.12 2.73-2.38 3.58v2.98h3.84c2.24-2.06 3.68-5.1 3.68-8.39z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-2.98c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.08c1.98 3.93 6.02 6.66 10.68 6.66z" />
+                    <path fill="#FBBC05" d="M5.24 14.26c-.25-.72-.39-1.5-.39-2.3s.14-1.58.39-2.3V6.58H1.32c-.84 1.68-1.32 3.56-1.32 5.5s.48 3.82 1.32 5.5l3.92-3.08z" />
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.93 1.19 15.24 0 12 0 7.34 0 3.3 2.73 1.32 6.66l3.92 3.08c.95-2.88 3.61-5.01 6.76-5.01z" />
+                  </svg>
+                  <span>Continue with Google Sign-In</span>
                 </button>
               </div>
-            )}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-110 cursor-pointer disabled:opacity-50"
-            >
-              {loading ? "Please wait..." : mode === "signup" ? "Create account" : "Sign in"}
-            </button>
 
-            <div className="relative flex py-2 items-center">
-              <div className="flex-grow border-t border-border"></div>
-              <span className="flex-shrink mx-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Or</span>
-              <div className="flex-grow border-t border-border"></div>
+              {/* Or separator */}
+              <div className="relative flex py-2 items-center mb-3">
+                <div className="flex-grow border-t border-border"></div>
+                <span className="flex-shrink mx-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                  Or Sign In with Email
+                </span>
+                <div className="flex-grow border-t border-border"></div>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <Field label="Email address" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+                <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
+                <div className="flex justify-end -mt-1 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErrorMsg("");
+                      setForgotEmail(email || "");
+                      setForgotStep("email");
+                      setForgotError("");
+                      setForgotSuccess("");
+                      setForgotModalOpen(true);
+                    }}
+                    className="text-xs text-primary hover:underline font-medium cursor-pointer"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-110 cursor-pointer disabled:opacity-50"
+                >
+                  {loading ? "Signing in..." : "Sign in to Account"}
+                </button>
+              </form>
             </div>
+          )}
 
-            {googleClientId && (
-              <div id="googleOfficialBtn" className="w-full flex justify-center mb-2 min-h-[40px]" />
-            )}
+          {/* ══════════════════════════════════════════════════════════════
+              VIEW 2: CREATE ACCOUNT MODE (Pure Registration)
+              ══════════════════════════════════════════════════════════════ */}
+          {mode === "signup" && (
+            <div>
+              <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Step 1: Select Your Role
+              </p>
+              <div className="mb-5 grid grid-cols-2 gap-3">
+                <RoleCard active={role === "hiker"} onClick={() => setRole("hiker")} emoji="🧳" label="Hiker" sub="I need rides" />
+                <RoleCard active={role === "driver"} onClick={() => setRole("driver")} emoji="🚐" label="Driver" sub="I offer rides" />
+              </div>
 
-            <button
-              type="button"
-              onClick={handleGoogleButtonClick}
-              className="w-full flex items-center justify-center gap-2.5 rounded-full border border-border bg-card py-2.5 text-sm font-semibold text-foreground transition hover:bg-secondary cursor-pointer shadow-sm"
-            >
-              <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.48-1.12 2.73-2.38 3.58v2.98h3.84c2.24-2.06 3.68-5.1 3.68-8.39z" />
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-2.98c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.08c1.98 3.93 6.02 6.66 10.68 6.66z" />
-                <path fill="#FBBC05" d="M5.24 14.26c-.25-.72-.39-1.5-.39-2.3s.14-1.58.39-2.3V6.58H1.32c-.84 1.68-1.32 3.56-1.32 5.5s.48 3.82 1.32 5.5l3.92-3.08z" />
-                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.93 1.19 15.24 0 12 0 7.34 0 3.3 2.73 1.32 6.66l3.92 3.08c.95-2.88 3.61-5.01 6.76-5.01z" />
-              </svg>
-              Continue with Google
-            </button>
-          </form>
+              {/* Distinct Google Sign Up Card */}
+              <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4 mb-5 text-center shadow-xs">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <div className="h-6 w-6 rounded-full bg-background border flex items-center justify-center shadow-xs">
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.48-1.12 2.73-2.38 3.58v2.98h3.84c2.24-2.06 3.68-5.1 3.68-8.39z" />
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-2.98c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.08c1.98 3.93 6.02 6.66 10.68 6.66z" />
+                      <path fill="#FBBC05" d="M5.24 14.26c-.25-.72-.39-1.5-.39-2.3s.14-1.58.39-2.3V6.58H1.32c-.84 1.68-1.32 3.56-1.32 5.5s.48 3.82 1.32 5.5l3.92-3.08z" />
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.93 1.19 15.24 0 12 0 7.34 0 3.3 2.73 1.32 6.66l3.92 3.08c.95-2.88 3.61-5.01 6.76-5.01z" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-bold text-foreground">
+                    Register with Google as {role === "driver" ? "Driver" : "Hiker"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mb-3">
+                  Fast 1-click registration — no passwords to remember
+                </p>
+
+                {googleClientId && (
+                  <div id="googleSignUpOfficialBtn" className="w-full flex justify-center mb-2 min-h-[40px]" />
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleOpenGoogleSignUp}
+                  className="w-full flex items-center justify-center gap-2.5 rounded-full border border-emerald-500/30 bg-card py-2.5 text-xs font-semibold text-foreground transition hover:bg-emerald-500/10 cursor-pointer shadow-sm"
+                >
+                  <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.48-1.12 2.73-2.38 3.58v2.98h3.84c2.24-2.06 3.68-5.1 3.68-8.39z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-2.98c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.08c1.98 3.93 6.02 6.66 10.68 6.66z" />
+                    <path fill="#FBBC05" d="M5.24 14.26c-.25-.72-.39-1.5-.39-2.3s.14-1.58.39-2.3V6.58H1.32c-.84 1.68-1.32 3.56-1.32 5.5s.48 3.82 1.32 5.5l3.92-3.08z" />
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.93 1.19 15.24 0 12 0 7.34 0 3.3 2.73 1.32 6.66l3.92 3.08c.95-2.88 3.61-5.01 6.76-5.01z" />
+                  </svg>
+                  <span>Sign Up with Google ({role === "driver" ? "Driver" : "Hiker"})</span>
+                </button>
+              </div>
+
+              {/* Or separator */}
+              <div className="relative flex py-2 items-center mb-3">
+                <div className="flex-grow border-t border-border"></div>
+                <span className="flex-shrink mx-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                  Or Register with Email
+                </span>
+                <div className="flex-grow border-t border-border"></div>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-3">
+                <Field label="Full name" value={name} onChange={setName} placeholder="e.g. Naledi Sithole" />
+                <Field label="Email address" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+                <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-110 cursor-pointer disabled:opacity-50"
+                >
+                  {loading ? "Creating account..." : `Create ${role === "driver" ? "Driver" : "Hiker"} Account`}
+                </button>
+              </form>
+            </div>
+          )}
         </div>
 
         <p className="mt-6 text-center text-[11px] text-muted-foreground">
@@ -487,13 +652,15 @@ function AuthPage() {
         </p>
       </div>
 
-      {/* Google Authentication Dialog */}
-      {googleDialogOpen && (
+      {/* ══════════════════════════════════════════════════════════════
+          DIALOG 1: PURE GOOGLE SIGN-IN DIALOG (Existing users only)
+          ══════════════════════════════════════════════════════════════ */}
+      {signInGoogleOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl border text-left">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-secondary/80 border">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 border border-primary/20">
                   <svg className="h-5 w-5" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.48-1.12 2.73-2.38 3.58v2.98h3.84c2.24-2.06 3.68-5.1 3.68-8.39z" />
                     <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-2.98c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.08c1.98 3.93 6.02 6.66 10.68 6.66z" />
@@ -506,79 +673,35 @@ function AuthPage() {
                     Sign In with Google
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    Safe, password-free login via Limpopo Hitch Connect
+                    Access your registered HikeConnect account
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={resetGoogleDialog}
+                onClick={() => setSignInGoogleOpen(false)}
                 className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-secondary transition cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            {/* Role selector */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                Select Your Role
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setGoogleRole("hiker")}
-                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${
-                    googleRole === "hiker"
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-primary/40 text-muted-foreground"
-                  }`}
-                >
-                  <span>🧳</span> Rider / Passenger
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGoogleRole("driver")}
-                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${
-                    googleRole === "driver"
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border hover:border-primary/40 text-muted-foreground"
-                  }`}
-                >
-                  <span>🚐</span> Driver
-                </button>
-              </div>
-            </div>
-
-            <form onSubmit={handleGoogleDirectSubmit} className="space-y-3.5">
+            <form onSubmit={handleSignInGoogleSubmit} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                  Google Account Email
+                  Your Google Email Address
                 </label>
                 <input
                   type="email"
                   required
-                  value={googleEmail}
-                  onChange={(e) => setGoogleEmail(e.target.value)}
+                  value={signInGoogleEmail}
+                  onChange={(e) => setSignInGoogleEmail(e.target.value)}
                   placeholder="e.g. thabo@gmail.com"
                   className="w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary transition"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">
-                  Your Full Name <span className="font-normal text-muted-foreground/80">(Optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={googleName}
-                  onChange={(e) => setGoogleName(e.target.value)}
-                  placeholder="e.g. Thabo Mokoena"
-                  className="w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary transition"
-                />
-              </div>
-
-              {/* Quick Fill One-Click Demo accounts */}
+              {/* Quick Sign-In presets */}
               <div className="rounded-xl border bg-secondary/30 p-3">
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground mb-2">
                   <Sparkles className="h-3.5 w-3.5 text-amber-500" />
@@ -587,7 +710,7 @@ function AuthPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => handleQuickGoogleSignIn("thabo.mokoena@gmail.com", "Thabo Mokoena", "hiker")}
+                    onClick={() => handleQuickSignIn("thabo.mokoena@gmail.com")}
                     className="flex flex-col items-start rounded-lg border bg-card p-2 text-left hover:border-primary/50 transition cursor-pointer"
                   >
                     <span className="text-xs font-semibold">🧳 Thabo M.</span>
@@ -595,7 +718,7 @@ function AuthPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleQuickGoogleSignIn("kagiso.driver@gmail.com", "Kagiso Ndlovu", "driver")}
+                    onClick={() => handleQuickSignIn("kagiso.driver@gmail.com")}
                     className="flex flex-col items-start rounded-lg border bg-card p-2 text-left hover:border-primary/50 transition cursor-pointer"
                   >
                     <span className="text-xs font-semibold">🚐 Kagiso N.</span>
@@ -604,30 +727,189 @@ function AuthPage() {
                 </div>
               </div>
 
-              {/* Production Note */}
-              <div className="flex items-start gap-2 rounded-xl bg-muted/40 p-2.5 text-[11px] text-muted-foreground">
-                <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
-                <span>
-                  {googleClientId
-                    ? "Official Google Identity Services is linked to your Google Client ID."
-                    : "For automatic Google popups in production, set VITE_GOOGLE_CLIENT_ID in your .env"}
-                </span>
-              </div>
-
               <div className="flex gap-2.5 pt-1">
                 <button
                   type="button"
-                  onClick={resetGoogleDialog}
+                  onClick={() => setSignInGoogleOpen(false)}
                   className="flex-1 rounded-full bg-muted py-2.5 text-xs font-semibold cursor-pointer hover:bg-muted/80 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={googleLoading}
+                  disabled={signInGoogleLoading}
                   className="flex-1 rounded-full bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/95 cursor-pointer disabled:opacity-50 transition shadow-sm"
                 >
-                  {googleLoading ? "Signing in..." : "Continue with Google"}
+                  {signInGoogleLoading ? "Signing in..." : "Sign In with Google"}
+                </button>
+              </div>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSignInGoogleOpen(false);
+                    setMode("signup");
+                    setSignUpGoogleOpen(true);
+                  }}
+                  className="text-xs text-primary hover:underline font-medium cursor-pointer"
+                >
+                  Don't have an account yet? Create one with Google &rarr;
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          DIALOG 2: PURE GOOGLE REGISTER DIALOG (New Account Onboarding)
+          ══════════════════════════════════════════════════════════════ */}
+      {signUpGoogleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl border text-left">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.9h6.6c-.28 1.48-1.12 2.73-2.38 3.58v2.98h3.84c2.24-2.06 3.68-5.1 3.68-8.39z" />
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.84-2.98c-1.08.72-2.45 1.16-4.09 1.16-3.15 0-5.81-2.13-6.76-5.01H1.32v3.08c1.98 3.93 6.02 6.66 10.68 6.66z" />
+                    <path fill="#FBBC05" d="M5.24 14.26c-.25-.72-.39-1.5-.39-2.3s.14-1.58.39-2.3V6.58H1.32c-.84 1.68-1.32 3.56-1.32 5.5s.48 3.82 1.32 5.5l3.92-3.08z" />
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.93 1.19 15.24 0 12 0 7.34 0 3.3 2.73 1.32 6.66l3.92 3.08c.95-2.88 3.61-5.01 6.76-5.01z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="font-display text-base font-bold text-foreground">
+                    Register with Google
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Create your new {signUpGoogleRole === "driver" ? "Driver" : "Hiker"} account
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSignUpGoogleOpen(false)}
+                className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-secondary transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Role switcher inside registration dialog */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                I am registering as:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSignUpGoogleRole("hiker")}
+                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${
+                    signUpGoogleRole === "hiker"
+                      ? "border-primary bg-primary/10 text-primary shadow-xs"
+                      : "border-border hover:border-primary/40 text-muted-foreground"
+                  }`}
+                >
+                  <span>🧳</span> Rider / Passenger
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSignUpGoogleRole("driver")}
+                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${
+                    signUpGoogleRole === "driver"
+                      ? "border-primary bg-primary/10 text-primary shadow-xs"
+                      : "border-border hover:border-primary/40 text-muted-foreground"
+                  }`}
+                >
+                  <span>🚐</span> Driver
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleSignUpGoogleSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={signUpGoogleName}
+                  onChange={(e) => setSignUpGoogleName(e.target.value)}
+                  placeholder="e.g. Naledi Sithole"
+                  className="w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1">
+                  Google Account Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={signUpGoogleEmail}
+                  onChange={(e) => setSignUpGoogleEmail(e.target.value)}
+                  placeholder="e.g. naledi@gmail.com"
+                  className="w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary transition"
+                />
+              </div>
+
+              {/* Quick Sign-Up presets */}
+              <div className="rounded-xl border bg-secondary/30 p-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground mb-2">
+                  <Sparkles className="h-3.5 w-3.5 text-emerald-500" />
+                  <span>One-Click Quick Register</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickSignUp("thabo.mokoena@gmail.com", "Thabo Mokoena", "hiker")}
+                    className="flex flex-col items-start rounded-lg border bg-card p-2 text-left hover:border-primary/50 transition cursor-pointer"
+                  >
+                    <span className="text-xs font-semibold">🧳 Thabo M. (Hiker)</span>
+                    <span className="text-[10px] text-muted-foreground truncate w-full">thabo.mokoena@gmail.com</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickSignUp("kagiso.driver@gmail.com", "Kagiso Ndlovu", "driver")}
+                    className="flex flex-col items-start rounded-lg border bg-card p-2 text-left hover:border-primary/50 transition cursor-pointer"
+                  >
+                    <span className="text-xs font-semibold">🚐 Kagiso N. (Driver)</span>
+                    <span className="text-[10px] text-muted-foreground truncate w-full">kagiso.driver@gmail.com</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSignUpGoogleOpen(false)}
+                  className="flex-1 rounded-full bg-muted py-2.5 text-xs font-semibold cursor-pointer hover:bg-muted/80 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={signUpGoogleLoading}
+                  className="flex-1 rounded-full bg-emerald-600 hover:bg-emerald-700 py-2.5 text-xs font-semibold text-white cursor-pointer disabled:opacity-50 transition shadow-sm"
+                >
+                  {signUpGoogleLoading ? "Creating account..." : "Complete Registration"}
+                </button>
+              </div>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSignUpGoogleOpen(false);
+                    setMode("signin");
+                    setSignInGoogleOpen(true);
+                  }}
+                  className="text-xs text-primary hover:underline font-medium cursor-pointer"
+                >
+                  Already have an account? Sign in with Google &rarr;
                 </button>
               </div>
             </form>

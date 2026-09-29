@@ -84,7 +84,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
 export async function googleLogin(req: Request, res: Response, next: NextFunction) {
   try {
-    const { credential, role: requestedRole } = req.body;
+    const { credential, role: requestedRole, mode } = req.body;
     let googleEmail = req.body.googleEmail || req.body.email;
     let name = req.body.name;
     let avatar = req.body.avatar;
@@ -141,7 +141,16 @@ export async function googleLogin(req: Request, res: Response, next: NextFunctio
       where: { OR: [{ googleEmail: normalizedEmail }, { email: normalizedEmail }] },
     });
 
+    // If user clicked "Sign In" but no account exists:
+    if (!user && mode === "signin") {
+      return res.status(404).json({
+        error: "No account found with this Google email. Please switch to 'Create account' to register.",
+      });
+    }
+
     if (!user) {
+      // Sign-up / registration flow
+      const { phone, vehicle, plate, seats } = req.body;
       user = await prisma.user.create({
         data: {
           googleEmail: normalizedEmail,
@@ -150,6 +159,10 @@ export async function googleLogin(req: Request, res: Response, next: NextFunctio
           role: userRole,
           avatar: avatar || null,
           verified: true,
+          phone: phone || null,
+          vehicle: vehicle || null,
+          plate: plate || null,
+          seats: seats ? parseInt(seats, 10) : null,
         },
       });
     } else {
