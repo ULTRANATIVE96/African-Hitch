@@ -30,4 +30,10 @@ export const ENV = {
   ADMIN_USERNAME: process.env.ADMIN_USERNAME || "admin",
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || "password",
   CORS_ORIGIN: process.env.CORS_ORIGIN || "*",
+  // Email / SMTP settings for PIN verification emails
+  SMTP_HOST: process.env.SMTP_HOST || "",
+  SMTP_PORT: process.env.SMTP_PORT || "587",
+  SMTP_USER: process.env.SMTP_USER || "",
+  SMTP_PASS: process.env.SMTP_PASS || "",
+  SMTP_FROM: process.env.SMTP_FROM || "Hitch Connect <no-reply@hitchconnect.co.za>",
 };
