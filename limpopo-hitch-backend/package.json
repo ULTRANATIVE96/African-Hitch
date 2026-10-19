@@ -2,6 +2,7 @@
   "name": "limpopo-hitch-backend-node",
   "version": "1.0.0",
   "description": "Limpopo Hitch Connect Node.js/TypeScript Production Backend API",
+  "author": "Nhlayiseko Divine Hlungwani <hlayisekohh7@gmail.com> (DAC-Technologies)",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

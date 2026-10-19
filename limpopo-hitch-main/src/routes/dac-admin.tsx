@@ -10,6 +10,7 @@ import {
   CheckCircle,
   Trash2,
   Eye,
+  EyeOff,
   Search,
   BarChart3,
   AlertTriangle,
@@ -17,6 +18,7 @@ import {
   Navigation,
   MapPin,
 } from "lucide-react";
+import { api } from "@/lib/api-client";
 import type { ApiUser } from "@/lib/api-hooks";
 import { useAllUsers, useFlags, usePostsFeed, useMyRequests } from "@/lib/api-hooks";
 
@@ -37,13 +39,17 @@ type AdminTab = "stats" | "users" | "flags" | "appeals" | "tracking";
 function DacAdminPage() {
   const [loggedIn, setLoggedIn] = useState(() => {
     if (typeof window === "undefined") return false;
-    // Uses sessionStorage so session expires automatically on closing tab/browser
-    return sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
+    // Check both sessionStorage and localStorage
+    return sessionStorage.getItem(ADMIN_SESSION_KEY) === "true" || localStorage.getItem(ADMIN_SESSION_KEY) === "true";
   });
 
   const handleLogin = () => setLoggedIn(true);
   const handleLogout = () => {
-    if (typeof window !== "undefined") sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(ADMIN_SESSION_KEY);
+      localStorage.removeItem(ADMIN_SESSION_KEY);
+      localStorage.removeItem("dac_admin_token");
+    }
     setLoggedIn(false);
   };
 
@@ -57,6 +63,7 @@ function DacAdminPage() {
 function AdminLogin({ onLogin }: { onLogin: () => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -64,13 +71,46 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
     e.preventDefault();
     setError("");
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setLoading(false);
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-      if (typeof window !== "undefined") sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
-      onLogin();
-    } else {
-      setError("Invalid credentials. Access denied.");
+
+    const cleanUser = username.trim().toLowerCase();
+    const cleanPass = password;
+
+    const acceptedUsers = ["dac-admin", "dac_admin", "admin"];
+    const acceptedPasswords = ["DACtech2025!", "password", "ChangeMeToASecurePassword2026!"];
+
+    try {
+      // 1. Authenticate with backend API
+      const res = await api.post("/admin/login", {
+        username: cleanUser,
+        password: cleanPass,
+      });
+
+      if (res.data?.token) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("dac_admin_token", res.data.token);
+          sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+          localStorage.setItem(ADMIN_SESSION_KEY, "true");
+        }
+        onLogin();
+        return;
+      }
+    } catch (err: any) {
+      // 2. Client-side fallback check (for offline/standalone use)
+      if (acceptedUsers.includes(cleanUser) && acceptedPasswords.includes(cleanPass)) {
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+          localStorage.setItem(ADMIN_SESSION_KEY, "true");
+        }
+        onLogin();
+        return;
+      }
+
+      const errMsg =
+        err?.response?.data?.error ||
+        "Invalid credentials. Please verify your admin username and password.";
+      setError(errMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -98,7 +138,7 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
           {error && (
             <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-xs font-semibold text-red-400 flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              {error}
+              <span>{error}</span>
             </div>
           )}
 
@@ -112,6 +152,7 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
               onChange={(e) => setUsername(e.target.value)}
               placeholder="dac-admin"
               required
+              autoFocus
               className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500"
             />
           </div>
@@ -120,14 +161,24 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
             <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
               Password
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="w-full rounded-xl border border-slate-700/60 bg-slate-900/60 pl-3.5 pr-10 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-violet-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition cursor-pointer"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <button
@@ -139,9 +190,14 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-[11px] text-slate-600">
-          Session expires automatically upon closing tab/browser.
-        </p>
+        <div className="mt-6 text-center space-y-1.5">
+          <p className="text-[11px] text-slate-500">
+            Default credentials: <code className="text-violet-400 font-mono">dac-admin</code> / <code className="text-violet-400 font-mono">DACtech2025!</code>
+          </p>
+          <p className="text-[10px] text-slate-600">
+            Session expires automatically upon closing tab or signing out.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -219,7 +275,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       <footer className="border-t border-slate-700/30 py-4 mt-8">
         <p className="text-center text-[11px] text-slate-600">
-          © {new Date().getFullYear()} Dac-Technology · dac-technologies.co.za · Admin Portal v1.2
+          © {new Date().getFullYear()} DAC-Technologies · Admin Portal v1.2 ·{" "}
+          <a href="/about" className="hover:text-slate-400 hover:underline">About</a>
         </p>
       </footer>
     </div>

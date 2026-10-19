@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as DacAdminRouteImport } from './routes/dac-admin'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AppealRouteImport } from './routes/appeal'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as OnboardingHikerRouteImport } from './routes/onboarding.hiker'
@@ -37,6 +38,11 @@ const AuthRoute = AuthRouteImport.update({
 const AppealRoute = AppealRouteImport.update({
   id: '/appeal',
   path: '/appeal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -96,6 +102,7 @@ const AuthenticatedTripIdRoute = AuthenticatedTripIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/appeal': typeof AppealRoute
   '/auth': typeof AuthRoute
   '/dac-admin': typeof DacAdminRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/appeal': typeof AppealRoute
   '/auth': typeof AuthRoute
   '/dac-admin': typeof DacAdminRoute
@@ -128,6 +136,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/about': typeof AboutRoute
   '/appeal': typeof AppealRoute
   '/auth': typeof AuthRoute
   '/dac-admin': typeof DacAdminRoute
@@ -145,6 +154,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/appeal'
     | '/auth'
     | '/dac-admin'
@@ -160,6 +170,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
     | '/appeal'
     | '/auth'
     | '/dac-admin'
@@ -176,6 +187,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/about'
     | '/appeal'
     | '/auth'
     | '/dac-admin'
@@ -193,6 +205,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  AboutRoute: typeof AboutRoute
   AppealRoute: typeof AppealRoute
   AuthRoute: typeof AuthRoute
   DacAdminRoute: typeof DacAdminRoute
@@ -221,6 +234,13 @@ declare module '@tanstack/react-router' {
       path: '/appeal'
       fullPath: '/appeal'
       preLoaderRoute: typeof AppealRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -330,6 +350,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  AboutRoute: AboutRoute,
   AppealRoute: AppealRoute,
   AuthRoute: AuthRoute,
   DacAdminRoute: DacAdminRoute,

@@ -23,7 +23,7 @@ api.interceptors.request.use((config) => {
     config.url = config.url.substring(4);
   }
   const token = typeof window !== "undefined" && typeof localStorage !== "undefined"
-    ? localStorage.getItem("hitch_token")
+    ? localStorage.getItem("hitch_token") || localStorage.getItem("dac_admin_token")
     : null;
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
@@ -39,11 +39,12 @@ api.interceptors.response.use(
     }
     const status = error.response?.status;
     const url: string = error.config?.url ?? "";
-    // Never auto-redirect on auth endpoints
-    const isAuthEndpoint = url.includes("/auth/");
+    // Never auto-redirect on auth endpoints or admin pages
+    const isAuthEndpoint = url.includes("/auth/") || url.includes("/admin");
+    const isAdminRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/dac-admin");
     // Redirect on 401 Unauthorized OR 404 on /users/me (e.g. database reseeded/user deleted)
     const isStaleSession = status === 401 || (status === 404 && url.includes("/users/me"));
-    const shouldRedirect = !isAuthEndpoint && isStaleSession && !_redirectingToAuth;
+    const shouldRedirect = !isAuthEndpoint && !isAdminRoute && isStaleSession && !_redirectingToAuth;
 
     if (shouldRedirect) {
       _redirectingToAuth = true;

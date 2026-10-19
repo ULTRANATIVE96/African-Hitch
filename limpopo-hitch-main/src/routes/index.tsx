@@ -192,17 +192,9 @@ function Landing() {
       <footer className="border-t bg-background">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-5 py-6 text-sm text-muted-foreground">
           <span>© {new Date().getFullYear()} African Hitch &amp; Lift Connect</span>
-          <span className="text-xs">
-            Created by{" "}
-            <a
-              href="http://dac-technologies.co.za/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-primary underline hover:text-primary/80 transition"
-            >
-              Dac-Technology
-            </a>
-          </span>
+          <Link to="/about" className="text-xs text-muted-foreground/70 hover:text-foreground hover:underline">
+            About
+          </Link>
         </div>
       </footer>
     </div>

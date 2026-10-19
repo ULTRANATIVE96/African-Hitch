@@ -1,5 +1,8 @@
 {
-  "name": "tanstack_start_ts",
+  "name": "african-hitch-connect-frontend",
+  "version": "1.0.0",
+  "description": "African Hitch Connect - Real-Time Ridesharing & Hitchhiking Platform",
+  "author": "Nhlayiseko Divine Hlungwani <hlayisekohh7@gmail.com> (DAC-Technologies)",
   "private": true,
   "sideEffects": false,
   "type": "module",

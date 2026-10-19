@@ -1,7 +1,20 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { z } from "zod";
-import { Mountain, KeyRound, ArrowLeft, CheckCircle2, X, Mail } from "lucide-react";
+import {
+  Mountain,
+  KeyRound,
+  ArrowLeft,
+  CheckCircle2,
+  X,
+  Mail,
+  Lock,
+  User as UserIcon,
+  Car,
+  Check,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import { api, setSession } from "@/lib/api-client";
 
 const searchSchema = z.object({
@@ -13,8 +26,8 @@ export const Route = createFileRoute("/auth")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "Sign in — Hitch Connect" },
-      { name: "description", content: "Sign in or create a hiker or driver account on Hitch Connect." },
+      { title: "HikeConnect — Sign in or Register" },
+      { name: "description", content: "Sign in or create a hiker or driver account on HikeConnect." },
     ],
   }),
   component: AuthPage,
@@ -34,15 +47,30 @@ function GoogleIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+// ─── Hiker Walking Stick Icon ────────────────────────────────────────────────
+function HikerIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="4" r="2" />
+      <path d="M17 21v-5l-3-2-2 3v4" />
+      <path d="M7 21l3-6 2-1-1-4 3 2 2-2" />
+      <path d="M19 8v13" />
+    </svg>
+  );
+}
+
 function AuthPage() {
   const { role: initialRole, banned } = Route.useSearch();
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState<"signin" | "signup">("signup");
+  const [mode, setMode] = useState<"signin" | "signup">(initialRole ? "signup" : "signin");
   const [role, setRole] = useState<Role>(initialRole ?? "hiker");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -60,7 +88,7 @@ function AuthPage() {
 
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-  // PIN verification state (used for both email and Google registration)
+  // PIN verification state
   const [verificationRequired, setVerificationRequired] = useState(false);
   const [pendingUserId, setPendingUserId] = useState("");
   const [pendingToken, setPendingToken] = useState("");
@@ -132,18 +160,6 @@ function AuthPage() {
             auto_select: false,
             cancel_on_tap_outside: true,
           });
-          const btnId = mode === "signin" ? "googleSignInOfficialBtn" : "googleSignUpOfficialBtn";
-          const btnEl = document.getElementById(btnId);
-          if (btnEl) {
-            btnEl.innerHTML = "";
-            g.accounts.id.renderButton(btnEl, {
-              theme: "outline",
-              size: "large",
-              width: "100%",
-              text: mode === "signin" ? "signin_with" : "signup_with",
-              shape: "pill",
-            });
-          }
         } catch (err) {
           console.warn("Google GSI init:", err);
         }
@@ -162,38 +178,29 @@ function AuthPage() {
     }
   }, [googleClientId, role, mode]);
 
-  // ─── Open Google Sign-In dialog ───────────────────────────────────────────
-  const handleOpenGoogleSignIn = () => {
-    setErrorMsg("");
-    const g = (window as any).google;
-    if (googleClientId && g?.accounts?.id) {
-      try {
-        g.accounts.id.prompt((n: any) => {
-          if (n.isNotDisplayed() || n.isSkippedMoment()) setSignInGoogleOpen(true);
-        });
-        return;
-      } catch {}
-    }
-    setSignInGoogleOpen(true);
-  };
-
-  // ─── Open Google Register dialog ──────────────────────────────────────────
-  const handleOpenGoogleSignUp = () => {
+  const handleOpenGoogle = () => {
     setErrorMsg("");
     const g = (window as any).google;
     if (googleClientId && g?.accounts?.id) {
       try {
         g.accounts.id.prompt((n: any) => {
           if (n.isNotDisplayed() || n.isSkippedMoment()) {
-            setSignUpGoogleRole(role);
-            setSignUpGoogleOpen(true);
+            if (mode === "signin") setSignInGoogleOpen(true);
+            else {
+              setSignUpGoogleRole(role);
+              setSignUpGoogleOpen(true);
+            }
           }
         });
         return;
       } catch {}
     }
-    setSignUpGoogleRole(role);
-    setSignUpGoogleOpen(true);
+    if (mode === "signin") {
+      setSignInGoogleOpen(true);
+    } else {
+      setSignUpGoogleRole(role);
+      setSignUpGoogleOpen(true);
+    }
   };
 
   // ─── Google Sign-In submit ────────────────────────────────────────────────
@@ -259,6 +266,7 @@ function AuthPage() {
       if (mode === "signup") {
         if (!email || !password) { setErrorMsg("Email and password are required."); setLoading(false); return; }
         if (!name.trim()) { setErrorMsg("Full name is required."); setLoading(false); return; }
+        if (password !== confirmPassword) { setErrorMsg("Passwords do not match."); setLoading(false); return; }
         const res = await api.post("/auth/register", {
           name: name.trim(),
           email: email.trim().toLowerCase(),
@@ -300,10 +308,8 @@ function AuthPage() {
     if (!pinInput.trim()) { setErrorMsg("Please enter the verification code."); return; }
     setLoading(true);
     try {
-      // Use pending token for the verification call
       localStorage.setItem("hitch_token", pendingToken);
       const res = await api.post("/auth/verify-pin", { pin: pinInput.trim() });
-      // Replace pending token with the full session token returned after verification
       setSession(res.data.token, res.data.userId);
       navigate({ to: pendingRole === "driver" ? "/onboarding/driver" : "/onboarding/hiker" });
     } catch (err: any) {
@@ -323,7 +329,7 @@ function AuthPage() {
         token: pendingToken,
       });
     } catch {
-      // Ignore errors — user will be cleaned up by backend TTL or next registration attempt
+      // Ignore
     } finally {
       setRollbackLoading(false);
       setVerificationRequired(false);
@@ -381,36 +387,35 @@ function AuthPage() {
   // ══════════════════════════════════════════════════════════════════════════
   if (verificationRequired) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-secondary/40 px-4 py-12">
+      <div className="flex min-h-screen items-center justify-center bg-[#fcfbf7] px-4 py-12">
         <div className="w-full max-w-md">
           <Link to="/" className="mb-6 inline-flex items-center gap-2">
-            <Mountain className="h-5 w-5 text-primary" />
-            <span className="font-display text-lg font-bold">Hitch Connect</span>
+            <Mountain className="h-5 w-5 text-[#14382b]" />
+            <span className="font-display text-lg font-bold text-[#14382b]">HikeConnect</span>
           </Link>
-          <div className="rounded-2xl border bg-card p-6 shadow-sm">
-            {/* Icon */}
+          <div className="rounded-3xl border border-[#e8e4d8] bg-white p-7 shadow-xs text-center">
             <div className="flex justify-center mb-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 border border-primary/20">
-                <Mail className="h-7 w-7 text-primary" />
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#ffeedb] text-[#c85a17] border border-[#fed7aa]">
+                <Mail className="h-7 w-7" />
               </div>
             </div>
-            <h2 className="text-xl font-bold mb-1 text-center">Check your email</h2>
-            <p className="text-sm text-muted-foreground mb-1 text-center">
+            <h2 className="text-xl font-bold mb-1 text-[#111827]">Check your email</h2>
+            <p className="text-xs text-[#71717a] mb-1">
               We sent a 6-digit verification code to:
             </p>
-            <p className="text-sm font-semibold text-foreground text-center mb-5 break-all">
+            <p className="text-sm font-semibold text-[#14382b] mb-5 break-all">
               {pendingEmail}
             </p>
 
             {errorMsg && (
-              <div className="mb-4 rounded-xl bg-destructive/15 p-3.5 text-xs text-destructive font-medium border border-destructive/25 text-center">
+              <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs text-red-600 font-medium border border-red-200">
                 ⚠️ {errorMsg}
               </div>
             )}
 
             <form onSubmit={handleVerifySubmit} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground block">Verification Code</label>
+              <div className="space-y-1 text-left">
+                <label className="text-xs font-semibold text-[#4b5563] block">Verification Code</label>
                 <input
                   id="pin-input"
                   type="text"
@@ -421,20 +426,20 @@ function AuthPage() {
                   maxLength={6}
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ""))}
-                  className="w-full rounded-xl border bg-secondary/30 px-4 py-3.5 text-lg tracking-[0.5em] text-center font-mono font-bold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-xl border border-[#e8e4d8] bg-[#fcfbf7] px-4 py-3 text-lg tracking-[0.5em] text-center font-mono font-bold focus:border-[#14382b] focus:outline-none"
                 />
               </div>
               <button
                 type="submit"
                 id="verify-btn"
                 disabled={loading || pinInput.length < 6}
-                className="w-full rounded-xl bg-primary px-4 py-3.5 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90 hover:shadow-md disabled:opacity-50 cursor-pointer"
+                className="w-full rounded-xl bg-[#14382b] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1b4a3a] disabled:opacity-50 cursor-pointer shadow-xs"
               >
                 {loading ? "Verifying..." : "Verify & Complete Registration"}
               </button>
             </form>
 
-            <p className="mt-4 text-center text-xs text-muted-foreground">
+            <p className="mt-4 text-center text-xs text-[#71717a]">
               Didn't receive it? Check your spam folder.
             </p>
 
@@ -443,7 +448,7 @@ function AuthPage() {
               id="cancel-registration-btn"
               onClick={handleCancelRegistration}
               disabled={rollbackLoading}
-              className="mt-3 w-full text-center text-xs text-muted-foreground hover:text-destructive transition cursor-pointer disabled:opacity-50"
+              className="mt-3 w-full text-center text-xs text-[#71717a] hover:text-red-600 transition cursor-pointer disabled:opacity-50"
             >
               {rollbackLoading ? "Cancelling..." : "Cancel registration & start over"}
             </button>
@@ -454,237 +459,589 @@ function AuthPage() {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // MAIN AUTH CARD
+  // MAIN AUTH SCREEN (MATCHING MOCKUP IMAGE EXACTLY)
   // ══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="flex min-h-screen items-center justify-center bg-secondary/40 px-4 py-12">
-      <div className="w-full max-w-md">
-        <Link to="/" className="mb-6 inline-flex items-center gap-2">
-          <Mountain className="h-5 w-5 text-primary" />
-          <span className="font-display text-lg font-bold">Hitch Connect</span>
-        </Link>
+    <div className="min-h-screen w-full bg-[#fcfbf7] text-[#1f2937] p-2 sm:p-4 lg:p-6 flex items-center justify-center">
+      {/* Outer Card Frame covering the entire page / blending with viewport */}
+      <div className="w-full min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)] lg:min-h-[calc(100vh-3rem)] rounded-[2rem] sm:rounded-[2.5rem] border border-[#e8e4d8] bg-[#fcfbf7] p-6 sm:p-8 lg:p-10 shadow-xs flex flex-col justify-between relative overflow-hidden">
+        {/* Top Header */}
+        <header className="flex items-center justify-between pb-4 sm:pb-6 relative z-20">
+          <Link to="/" className="flex items-center gap-2.5 group">
+            {/* HikeConnect Logo: Double Mountain Peaks with Snowcap Cutouts */}
+            <svg className="h-7 w-9 text-[#1b4332]" viewBox="0 0 36 28" fill="none">
+              {/* Back / Left Peak */}
+              <polygon points="3,25 12,8 21,25" fill="#1b4332" />
+              <polygon points="12,8 9.5,13 12,14.5 14.5,13" fill="#fcfbf7" />
+              {/* Front / Right Peak */}
+              <polygon points="13,25 23,4 33,25" fill="#1b4332" />
+              <polygon points="23,4 19.5,11 23,13 26.5,11" fill="#fcfbf7" />
+            </svg>
+            <span className="font-display text-2xl font-extrabold tracking-tight text-[#1b4332]">
+              HikeConnect
+            </span>
+          </Link>
+          <div className="text-xs text-[#71717a] font-medium hidden sm:block tracking-wide">
+            More Rides. More Trails. Together.
+          </div>
+        </header>
 
-        <div className="rounded-2xl border bg-card p-6 shadow-sm">
-          {banned && (
-            <div className="mb-4 rounded-xl bg-destructive/15 p-3.5 text-xs text-destructive font-medium border border-destructive/25 text-center animate-pulse">
-              ❌ Your account has been suspended due to 10 or more community safety flags.
+        {/* Two-Column Grid: Decorative Left Panel + Floating Form Card */}
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center my-auto py-2 sm:py-4">
+          {/* ═══════════ LEFT DECORATIVE SECTION ═══════════ */}
+          <div className="lg:col-span-7 xl:col-span-7 relative flex flex-col justify-between h-full min-h-[440px] sm:min-h-[520px] lg:min-h-[600px] overflow-hidden rounded-2xl">
+            {/* Catchphrase text matching exact crop */}
+            <div className="relative z-10 pt-1 text-[#3e5444] text-base sm:text-lg font-semibold leading-snug max-w-xs">
+              {mode === "signup" ? (
+                <>
+                  <p>Real people.</p>
+                  <p>Safe rides.</p>
+                  <p>Greater adventures.</p>
+                </>
+              ) : (
+                <>
+                  <p>Same trails.</p>
+                  <p>New journeys.</p>
+                  <p>Log in and keep</p>
+                  <p>moving.</p>
+                </>
+              )}
             </div>
-          )}
-          {errorMsg && (
-            <div className="mb-4 rounded-xl bg-destructive/15 p-3.5 text-xs text-destructive font-medium border border-destructive/25 text-center">
-              ⚠️ {errorMsg}
-            </div>
-          )}
 
-          {/* Tab switcher */}
-          <div className="mb-6 grid grid-cols-2 gap-1 rounded-full bg-muted p-1 text-sm font-medium">
-            <button
-              id="tab-signup"
-              onClick={() => { setMode("signup"); setErrorMsg(""); }}
-              className={`rounded-full py-2 transition font-semibold ${mode === "signup" ? "bg-card text-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Create account
-            </button>
-            <button
-              id="tab-signin"
-              onClick={() => { setMode("signin"); setErrorMsg(""); }}
-              className={`rounded-full py-2 transition font-semibold ${mode === "signin" ? "bg-card text-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              Sign in
-            </button>
+            {/* Landscape Illustration: Misty Mountain Layers, Dotted Trail, Map Pin, and Hiker */}
+            <div className="absolute inset-0 pointer-events-none select-none">
+              <svg className="w-full h-full" viewBox="0 0 520 620" fill="none" preserveAspectRatio="xMidYMax meet">
+                {/* Layer 1: Distant Misty Sky Glow & Faint Mountain Slope */}
+                <path
+                  d="M0 400 C120 340, 240 370, 360 280 C430 230, 480 260, 520 290 L520 620 L0 620 Z"
+                  fill="#edf3ec"
+                />
+
+                {/* Layer 2: Mid-distance Mountain Ridge with Slopes */}
+                <path
+                  d="M0 450 C90 410, 180 390, 280 360 C370 330, 450 390, 520 410 L520 620 L0 620 Z"
+                  fill="#dce7db"
+                />
+
+                {/* Layer 3: Closer Mountain Ridge */}
+                <path
+                  d="M0 490 C110 460, 200 460, 310 440 C410 420, 470 470, 520 490 L520 620 L0 620 Z"
+                  fill="#c8d8c7"
+                />
+
+                {/* Curved Dotted Trail Loop curving down to Hiker */}
+                <path
+                  d="M170 460 C155 380, 220 310, 255 240 C280 190, 310 160, 325 115"
+                  stroke="#7f9382"
+                  strokeWidth="2.5"
+                  strokeDasharray="5 6"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+
+                {/* Teardrop Destination Map Pin Marker at Top of Trail */}
+                <g transform="translate(315, 90)">
+                  <path
+                    d="M10 2 C5.58 2 2 5.58 2 10 C2 15.5 10 23 10 23 C10 23 18 15.5 18 10 C18 5.58 14.42 2 10 2 Z"
+                    fill="#304838"
+                  />
+                  {/* Pin hollow inner circle */}
+                  <circle cx="10" cy="10" r="3.2" fill="#fcfbf7" />
+                </g>
+
+                {/* Foreground Rocks & Boulders */}
+                {/* Back boulder */}
+                <path
+                  d="M20 620 L30 550 C60 520, 120 510, 170 540 C210 565, 240 595, 270 620 Z"
+                  fill="#788c7a"
+                />
+                {/* Front boulder */}
+                <path
+                  d="M-10 620 L0 570 C40 560, 90 545, 140 560 C190 575, 230 610, 250 620 Z"
+                  fill="#546b57"
+                />
+
+                {/* Leaves & Fronds on Rocky Mound */}
+                {/* Left grasses */}
+                <path
+                  d="M25 570 C15 540, 30 535, 38 555 C42 530, 60 535, 55 560"
+                  fill="#3d5341"
+                />
+                <path
+                  d="M5 580 C-5 555, 10 550, 15 570"
+                  fill="#3d5341"
+                />
+                {/* Right branch with leaves */}
+                <g transform="translate(185, 530)">
+                  <path d="M10 60 C18 45, 28 30, 35 15" stroke="#3d5341" strokeWidth="2.5" strokeLinecap="round" />
+                  <ellipse cx="20" cy="50" rx="6" ry="3" transform="rotate(-30 20 50)" fill="#3d5341" />
+                  <ellipse cx="32" cy="40" rx="6" ry="3" transform="rotate(20 32 40)" fill="#3d5341" />
+                  <ellipse cx="26" cy="28" rx="6" ry="3" transform="rotate(-40 26 28)" fill="#3d5341" />
+                  <ellipse cx="38" cy="20" rx="6" ry="3" transform="rotate(15 38 20)" fill="#3d5341" />
+                  <ellipse cx="36" cy="10" rx="5" ry="3" transform="rotate(-30 36 10)" fill="#3d5341" />
+                </g>
+
+                {/* Detailed Hiker Figure */}
+                <g transform="translate(85, 420)">
+                  {/* Peaked Trail Cap / Head */}
+                  <circle cx="34" cy="14" r="6" fill="#3d5341" />
+                  <path d="M26 13 C26 10, 42 9, 44 14 Z" fill="#3d5341" />
+                  <path d="M42 14 L49 14.5 C49 14.5, 46 12, 42 12 Z" fill="#3d5341" />
+
+                  {/* Backpack */}
+                  <path
+                    d="M18 20 C14 20, 11 28, 12 38 C12 45, 16 48, 20 47 L21 24 Z"
+                    fill="#2a3c2e"
+                  />
+
+                  {/* Upper body / Jacket & Vest */}
+                  <path
+                    d="M26 20 C31 20, 36 21, 38 27 L36 43 C32 46, 26 46, 21 44 L23 25 Z"
+                    fill="#6e8471"
+                  />
+                  <path
+                    d="M27 21 L35 27 L33 43 L27 44 Z"
+                    fill="#3d5341"
+                    opacity="0.85"
+                  />
+
+                  {/* Left Arm holding Trekking Stick */}
+                  <path
+                    d="M34 26 L42 38 L40 46"
+                    stroke="#3d5341"
+                    strokeWidth="4"
+                    strokeLinecap="round"
+                  />
+                  {/* Right Arm */}
+                  <path
+                    d="M26 25 L23 37"
+                    stroke="#2a3c2e"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Trekking Pole / Walking Stick */}
+                  <line
+                    x1="41"
+                    y1="38"
+                    x2="47"
+                    y2="92"
+                    stroke="#26362d"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Legs in Hiking Trousers & Boots */}
+                  {/* Front Leg (stepping forward) */}
+                  <path
+                    d="M32 44 L35 62 L40 82 L46 84"
+                    stroke="#3d5341"
+                    strokeWidth="5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                  {/* Back Leg */}
+                  <path
+                    d="M25 44 L20 60 L18 80 L13 83"
+                    stroke="#2a3c2e"
+                    strokeWidth="4.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                </g>
+
+                {/* White bottom slope matching the mockup's bottom white ground cut */}
+                <path
+                  d="M-10 620 L-10 590 C80 580, 200 600, 360 580 C440 570, 500 590, 530 600 L530 620 Z"
+                  fill="#fcfbf7"
+                />
+              </svg>
+            </div>
           </div>
 
-          {/* ════════════════════════════════════════════════════════
-              SIGN IN MODE
-              ════════════════════════════════════════════════════════ */}
-          {mode === "signin" && (
-            <div>
-              <form onSubmit={handleSubmit} className="space-y-3 mb-5">
-                <Field label="Email address" type="email" value={email} onChange={setEmail} placeholder="you@example.com" id="signin-email" />
-                <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" id="signin-password" />
-                <div className="flex justify-end -mt-1 pb-1">
+          {/* ═══════════ RIGHT FORM CARD ═══════════ */}
+          <div className="lg:col-span-5 xl:col-span-5 flex justify-center lg:justify-end relative z-20">
+            <div className="w-full max-w-[440px] rounded-3xl border border-[#e8e4d8] bg-white p-7 sm:p-9 shadow-sm">
+              {banned && (
+                <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs text-red-600 font-medium border border-red-200 text-center animate-pulse">
+                  ❌ Your account has been suspended due to 10 or more community safety flags.
+                </div>
+              )}
+              {errorMsg && (
+                <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs text-red-600 font-medium border border-red-200 text-center">
+                  ⚠️ {errorMsg}
+                </div>
+              )}
+
+              {/* ════════════════════════════════════════════════════
+                  SIGN UP VIEW (Create your HikeConnect account)
+                  ════════════════════════════════════════════════════ */}
+              {mode === "signup" ? (
+                <div>
+                  <h1 className="font-display text-2xl sm:text-[26px] font-extrabold tracking-tight text-[#14382b] leading-[1.18]">
+                    Create your
+                    <br />
+                    HikeConnect account
+                  </h1>
+                  <p className="mt-1 mb-4 text-xs sm:text-sm text-[#71717a]">
+                    Choose how you'll use HikeConnect
+                  </p>
+
+                  {/* Role Selector Cards: Hiker & Driver */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    {/* Hiker Card */}
+                    <button
+                      type="button"
+                      onClick={() => setRole("hiker")}
+                      className={`relative flex flex-col justify-between p-3.5 rounded-2xl text-left transition cursor-pointer ${
+                        role === "hiker"
+                          ? "border-2 border-[#14382b] bg-[#f4f7f5]"
+                          : "border border-[#e8e4d8] bg-white hover:border-[#14382b]/40"
+                      }`}
+                    >
+                      {role === "hiker" && (
+                        <div className="absolute top-2.5 right-2.5 h-4 w-4 rounded-full bg-[#14382b] text-white flex items-center justify-center shadow-xs">
+                          <Check className="h-2.5 w-2.5 stroke-[3]" />
+                        </div>
+                      )}
+                      <div className="h-6 w-6 text-[#14382b] mb-2">
+                        <HikerIcon className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-[#111827]">Hiker</div>
+                        <div className="text-[11px] text-[#71717a]">Find rides</div>
+                      </div>
+                    </button>
+
+                    {/* Driver Card */}
+                    <button
+                      type="button"
+                      onClick={() => setRole("driver")}
+                      className={`relative flex flex-col justify-between p-3.5 rounded-2xl text-left transition cursor-pointer ${
+                        role === "driver"
+                          ? "border-2 border-[#14382b] bg-[#f4f7f5]"
+                          : "border border-[#e8e4d8] bg-white hover:border-[#14382b]/40"
+                      }`}
+                    >
+                      {role === "driver" && (
+                        <div className="absolute top-2.5 right-2.5 h-4 w-4 rounded-full bg-[#14382b] text-white flex items-center justify-center shadow-xs">
+                          <Check className="h-2.5 w-2.5 stroke-[3]" />
+                        </div>
+                      )}
+                      <div className="h-6 w-6 text-[#14382b] mb-2">
+                        <Car className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-[#111827]">Driver</div>
+                        <div className="text-[11px] text-[#71717a]">Offer rides</div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Dark Green Google Button */}
                   <button
                     type="button"
-                    id="forgot-password-btn"
-                    onClick={() => { setErrorMsg(""); setForgotEmail(email || ""); setForgotStep("email"); setForgotError(""); setForgotSuccess(""); setForgotModalOpen(true); }}
-                    className="text-xs text-primary hover:underline font-medium cursor-pointer"
+                    onClick={handleOpenGoogle}
+                    className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-[#14382b] hover:bg-[#1b4a3a] py-3 px-4 text-xs sm:text-sm font-semibold text-white transition shadow-xs cursor-pointer mb-3.5"
                   >
-                    Forgot password?
+                    <div className="h-5 w-5 rounded-full bg-white flex items-center justify-center">
+                      <GoogleIcon size={13} />
+                    </div>
+                    <span>Continue with Google</span>
                   </button>
+
+                  {/* Divider: OR */}
+                  <div className="relative flex py-1.5 items-center mb-3.5">
+                    <div className="flex-grow border-t border-[#e8e4d8]" />
+                    <span className="flex-shrink mx-3 text-[11px] font-semibold text-[#a1a1aa] uppercase tracking-wider">
+                      OR
+                    </span>
+                    <div className="flex-grow border-t border-[#e8e4d8]" />
+                  </div>
+
+                  {/* Registration Form */}
+                  <form onSubmit={handleSubmit} className="space-y-3">
+                    {/* Full Name */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">Full name</label>
+                      <div className="relative">
+                        <UserIcon className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9ca3af]" />
+                        <input
+                          type="text"
+                          required
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="e.g. Naledi Sithole"
+                          className="w-full rounded-xl border border-[#e4e1d6] bg-white pl-10 pr-3.5 py-2.5 text-sm text-[#111827] placeholder:text-[#9ca3af] outline-none focus:border-[#14382b] transition"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Email address */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">Email address</label>
+                      <div className="relative">
+                        <Mail className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9ca3af]" />
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="you@example.com"
+                          className="w-full rounded-xl border border-[#e4e1d6] bg-white pl-10 pr-3.5 py-2.5 text-sm text-[#111827] placeholder:text-[#9ca3af] outline-none focus:border-[#14382b] transition"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Password */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">Password</label>
+                      <div className="relative">
+                        <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9ca3af]" />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          required
+                          minLength={6}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="Create a strong password"
+                          className="w-full rounded-xl border border-[#e4e1d6] bg-white pl-10 pr-10 py-2.5 text-sm text-[#111827] placeholder:text-[#9ca3af] outline-none focus:border-[#14382b] transition"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#4b5563] p-1 cursor-pointer"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Confirm password */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">Confirm password</label>
+                      <div className="relative">
+                        <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9ca3af]" />
+                        <input
+                          type={showConfirmPassword ? "text" : "password"}
+                          required
+                          minLength={6}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Re-enter your password"
+                          className="w-full rounded-xl border border-[#e4e1d6] bg-white pl-10 pr-10 py-2.5 text-sm text-[#111827] placeholder:text-[#9ca3af] outline-none focus:border-[#14382b] transition"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#4b5563] p-1 cursor-pointer"
+                        >
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full rounded-xl bg-[#14382b] hover:bg-[#1b4a3a] py-3 text-sm font-semibold text-white transition shadow-xs cursor-pointer disabled:opacity-50 mt-1"
+                    >
+                      {loading ? "Creating account..." : "Create account"}
+                    </button>
+                  </form>
+
+                  {/* Switch to Sign In */}
+                  <div className="mt-4 text-center text-xs text-[#71717a]">
+                    <span>Already have an account? </span>
+                    <button
+                      type="button"
+                      onClick={() => { setMode("signin"); setErrorMsg(""); }}
+                      className="font-bold text-[#14382b] hover:underline cursor-pointer"
+                    >
+                      Sign in
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="submit"
-                  id="signin-btn"
-                  disabled={loading}
-                  className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-110 cursor-pointer disabled:opacity-50"
-                >
-                  {loading ? "Signing in..." : "Sign in to Account"}
-                </button>
-              </form>
+              ) : (
+                /* ════════════════════════════════════════════════════
+                   SIGN IN VIEW (Welcome back)
+                   ════════════════════════════════════════════════════ */
+                <div>
+                  <h1 className="font-display text-2xl sm:text-[28px] font-extrabold tracking-tight text-[#14382b] leading-tight">
+                    Welcome back
+                  </h1>
+                  <p className="mt-1 mb-5 text-xs sm:text-sm text-[#71717a]">
+                    Sign in to continue your journey
+                  </p>
 
-              {/* Divider */}
-              <div className="relative flex py-2 items-center mb-4">
-                <div className="flex-grow border-t border-border" />
-                <span className="flex-shrink mx-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                  Or sign in with Google
-                </span>
-                <div className="flex-grow border-t border-border" />
-              </div>
+                  {/* Dark Green Google Button */}
+                  <button
+                    type="button"
+                    onClick={handleOpenGoogle}
+                    className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-[#14382b] hover:bg-[#1b4a3a] py-3 px-4 text-xs sm:text-sm font-semibold text-white transition shadow-xs cursor-pointer mb-4"
+                  >
+                    <div className="h-5 w-5 rounded-full bg-white flex items-center justify-center">
+                      <GoogleIcon size={13} />
+                    </div>
+                    <span>Continue with Google</span>
+                  </button>
 
-              {/* Google Sign In */}
-              {googleClientId && (
-                <div id="googleSignInOfficialBtn" className="w-full flex justify-center mb-2 min-h-[40px]" />
+                  {/* Divider: OR */}
+                  <div className="relative flex py-2 items-center mb-4">
+                    <div className="flex-grow border-t border-[#e8e4d8]" />
+                    <span className="flex-shrink mx-3 text-[11px] font-semibold text-[#a1a1aa] uppercase tracking-wider">
+                      OR
+                    </span>
+                    <div className="flex-grow border-t border-[#e8e4d8]" />
+                  </div>
+
+                  {/* Sign In Form */}
+                  <form onSubmit={handleSubmit} className="space-y-3.5">
+                    {/* Email address */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">Email address</label>
+                      <div className="relative">
+                        <Mail className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9ca3af]" />
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="you@example.com"
+                          className="w-full rounded-xl border border-[#e4e1d6] bg-white pl-10 pr-3.5 py-2.5 text-sm text-[#111827] placeholder:text-[#9ca3af] outline-none focus:border-[#14382b] transition"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Password */}
+                    <div>
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">Password</label>
+                      <div className="relative">
+                        <Lock className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9ca3af]" />
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          required
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="Enter your password"
+                          className="w-full rounded-xl border border-[#e4e1d6] bg-white pl-10 pr-10 py-2.5 text-sm text-[#111827] placeholder:text-[#9ca3af] outline-none focus:border-[#14382b] transition"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#4b5563] p-1 cursor-pointer"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+
+                      {/* Forgot password link */}
+                      <div className="flex justify-end pt-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setErrorMsg("");
+                            setForgotEmail(email || "");
+                            setForgotStep("email");
+                            setForgotError("");
+                            setForgotSuccess("");
+                            setForgotModalOpen(true);
+                          }}
+                          className="text-xs font-semibold text-[#14382b] hover:underline cursor-pointer"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full rounded-xl bg-[#14382b] hover:bg-[#1b4a3a] py-3 text-sm font-semibold text-white transition shadow-xs cursor-pointer disabled:opacity-50 mt-1"
+                    >
+                      {loading ? "Signing in..." : "Sign in"}
+                    </button>
+                  </form>
+
+                  {/* Switch to Sign Up */}
+                  <div className="mt-5 text-center text-xs text-[#71717a]">
+                    <span>New to HikeConnect? </span>
+                    <button
+                      type="button"
+                      onClick={() => { setMode("signup"); setErrorMsg(""); }}
+                      className="font-bold text-[#14382b] hover:underline cursor-pointer"
+                    >
+                      Create an account
+                    </button>
+                  </div>
+                </div>
               )}
-              <button
-                type="button"
-                id="google-signin-btn"
-                onClick={handleOpenGoogleSignIn}
-                className="w-full flex items-center justify-center gap-2.5 rounded-full border border-border bg-card py-2.5 text-xs font-semibold text-foreground transition hover:bg-secondary cursor-pointer shadow-sm"
-              >
-                <GoogleIcon />
-                <span>Continue with Google</span>
-              </button>
             </div>
-          )}
-
-          {/* ════════════════════════════════════════════════════════
-              CREATE ACCOUNT MODE
-              ════════════════════════════════════════════════════════ */}
-          {mode === "signup" && (
-            <div>
-              {/* Role Selection */}
-              <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Step 1: Select Your Role
-              </p>
-              <div className="mb-5 grid grid-cols-2 gap-3">
-                <RoleCard active={role === "hiker"} onClick={() => setRole("hiker")} emoji="🧳" label="Hiker" sub="I need rides" />
-                <RoleCard active={role === "driver"} onClick={() => setRole("driver")} emoji="🚐" label="Driver" sub="I offer rides" />
-              </div>
-
-              {/* Email Registration Form */}
-              <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Step 2: Create with Email
-              </p>
-              <form onSubmit={handleSubmit} className="space-y-3 mb-5">
-                <Field label="Full name" value={name} onChange={setName} placeholder="e.g. Naledi Sithole" id="signup-name" />
-                <Field label="Email address" type="email" value={email} onChange={setEmail} placeholder="you@example.com" id="signup-email" />
-                <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="At least 6 characters" id="signup-password" />
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  📧 A verification code will be sent to your email to confirm your account.
-                </p>
-                <button
-                  type="submit"
-                  id="signup-btn"
-                  disabled={loading}
-                  className="w-full rounded-full bg-primary py-3 text-sm font-semibold text-primary-foreground transition hover:brightness-110 cursor-pointer disabled:opacity-50"
-                >
-                  {loading ? "Creating account..." : `Create ${role === "driver" ? "Driver" : "Hiker"} Account`}
-                </button>
-              </form>
-
-              {/* Divider */}
-              <div className="relative flex py-2 items-center mb-4">
-                <div className="flex-grow border-t border-border" />
-                <span className="flex-shrink mx-3 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                  Or register with Google
-                </span>
-                <div className="flex-grow border-t border-border" />
-              </div>
-
-              {/* Google Register — below the email form */}
-              {googleClientId && (
-                <div id="googleSignUpOfficialBtn" className="w-full flex justify-center mb-2 min-h-[40px]" />
-              )}
-              <button
-                type="button"
-                id="google-signup-btn"
-                onClick={handleOpenGoogleSignUp}
-                className="w-full flex items-center justify-center gap-2.5 rounded-full border border-emerald-500/40 bg-emerald-500/5 py-2.5 text-xs font-semibold text-foreground transition hover:bg-emerald-500/10 cursor-pointer shadow-sm"
-              >
-                <GoogleIcon />
-                <span>Register with Google as {role === "driver" ? "Driver" : "Hiker"}</span>
-              </button>
-            </div>
-          )}
+          </div>
         </div>
-
-        <p className="mt-6 text-center text-[11px] text-muted-foreground">
-          Created by{" "}
-          <a href="http://dac-technologies.co.za/" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
-            Dac-Technology
-          </a>
-        </p>
       </div>
 
       {/* ════════════════════════════════════════════════════════════
           GOOGLE SIGN-IN DIALOG
           ════════════════════════════════════════════════════════════ */}
       {signInGoogleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl border text-left">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#e8e4d8] text-left">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 border border-primary/20">
-                  <GoogleIcon size={20} />
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#14382b]/10 border border-[#14382b]/20">
+                  <GoogleIcon size={18} />
                 </div>
                 <div>
-                  <h2 className="font-display text-base font-bold text-foreground">Sign In with Google</h2>
-                  <p className="text-xs text-muted-foreground">Access your registered Hitch Connect account</p>
+                  <h2 className="font-display text-base font-bold text-[#111827]">Sign In with Google</h2>
+                  <p className="text-xs text-[#71717a]">Access your HikeConnect account</p>
                 </div>
               </div>
               <button
                 type="button"
-                id="close-signin-google-btn"
                 onClick={() => setSignInGoogleOpen(false)}
-                className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-secondary transition cursor-pointer"
+                className="text-[#9ca3af] hover:text-[#111827] p-1.5 rounded-lg hover:bg-gray-100 transition cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {errorMsg && (
-              <div className="mb-3 rounded-xl bg-destructive/15 p-3 text-xs text-destructive font-medium border border-destructive/25">
+              <div className="mb-3 rounded-xl bg-red-50 p-3 text-xs text-red-600 font-medium border border-red-200">
                 ⚠️ {errorMsg}
               </div>
             )}
 
             <form onSubmit={handleSignInGoogleSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Your Google Email Address</label>
+                <label className="block text-xs font-semibold text-[#4b5563] mb-1">Your Google Email Address</label>
                 <input
                   type="email"
                   required
-                  id="google-signin-email"
                   value={signInGoogleEmail}
                   onChange={(e) => setSignInGoogleEmail(e.target.value)}
                   placeholder="e.g. thabo@gmail.com"
-                  className="w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary transition"
+                  className="w-full rounded-xl border border-[#e4e1d6] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#14382b] transition"
                 />
               </div>
               <div className="flex gap-2.5 pt-1">
                 <button
                   type="button"
                   onClick={() => setSignInGoogleOpen(false)}
-                  className="flex-1 rounded-full bg-muted py-2.5 text-xs font-semibold cursor-pointer hover:bg-muted/80 transition"
+                  className="flex-1 rounded-xl border border-[#e4e1d6] bg-white py-2.5 text-xs font-semibold text-[#4b5563] hover:bg-gray-50 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  id="google-signin-submit-btn"
                   disabled={signInGoogleLoading}
-                  className="flex-1 rounded-full bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/95 cursor-pointer disabled:opacity-50 transition shadow-sm"
+                  className="flex-1 rounded-xl bg-[#14382b] py-2.5 text-xs font-semibold text-white hover:bg-[#1b4a3a] cursor-pointer disabled:opacity-50 transition shadow-xs"
                 >
                   {signInGoogleLoading ? "Signing in..." : "Sign In"}
-                </button>
-              </div>
-              <div className="text-center pt-1">
-                <button
-                  type="button"
-                  onClick={() => { setSignInGoogleOpen(false); setMode("signup"); setSignUpGoogleOpen(true); }}
-                  className="text-xs text-primary hover:underline font-medium cursor-pointer"
-                >
-                  Don't have an account? Register with Google →
                 </button>
               </div>
             </form>
@@ -696,109 +1053,93 @@ function AuthPage() {
           GOOGLE REGISTER DIALOG
           ════════════════════════════════════════════════════════════ */}
       {signUpGoogleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl border text-left">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#e8e4d8] text-left">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                  <GoogleIcon size={20} />
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 border border-emerald-200">
+                  <GoogleIcon size={18} />
                 </div>
                 <div>
-                  <h2 className="font-display text-base font-bold text-foreground">Register with Google</h2>
-                  <p className="text-xs text-muted-foreground">
-                    New {signUpGoogleRole === "driver" ? "Driver" : "Hiker"} account · email verification required
+                  <h2 className="font-display text-base font-bold text-[#111827]">Register with Google</h2>
+                  <p className="text-xs text-[#71717a]">
+                    New {signUpGoogleRole === "driver" ? "Driver" : "Hiker"} account
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                id="close-signup-google-btn"
                 onClick={() => setSignUpGoogleOpen(false)}
-                className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-secondary transition cursor-pointer"
+                className="text-[#9ca3af] hover:text-[#111827] p-1.5 rounded-lg hover:bg-gray-100 transition cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {errorMsg && (
-              <div className="mb-3 rounded-xl bg-destructive/15 p-3 text-xs text-destructive font-medium border border-destructive/25">
+              <div className="mb-3 rounded-xl bg-red-50 p-3 text-xs text-red-600 font-medium border border-red-200">
                 ⚠️ {errorMsg}
               </div>
             )}
 
             {/* Role switcher */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">I am registering as:</label>
+              <label className="block text-xs font-semibold text-[#4b5563] mb-1.5">I am registering as:</label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setSignUpGoogleRole("hiker")}
-                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${signUpGoogleRole === "hiker" ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40 text-muted-foreground"}`}
+                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${signUpGoogleRole === "hiker" ? "border-[#14382b] bg-[#f4f7f5] text-[#14382b]" : "border-[#e8e4d8] text-[#71717a]"}`}
                 >
-                  🧳 Rider / Passenger
+                  <HikerIcon className="h-4 w-4" /> Hiker
                 </button>
                 <button
                   type="button"
                   onClick={() => setSignUpGoogleRole("driver")}
-                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${signUpGoogleRole === "driver" ? "border-primary bg-primary/10 text-primary" : "border-border hover:border-primary/40 text-muted-foreground"}`}
+                  className={`flex items-center justify-center gap-2 rounded-xl border p-2.5 text-xs font-semibold transition cursor-pointer ${signUpGoogleRole === "driver" ? "border-[#14382b] bg-[#f4f7f5] text-[#14382b]" : "border-[#e8e4d8] text-[#71717a]"}`}
                 >
-                  🚐 Driver
+                  <Car className="h-4 w-4" /> Driver
                 </button>
               </div>
             </div>
 
             <form onSubmit={handleSignUpGoogleSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Full Name</label>
+                <label className="block text-xs font-semibold text-[#4b5563] mb-1">Full Name</label>
                 <input
                   type="text"
                   required
-                  id="google-signup-name"
                   value={signUpGoogleName}
                   onChange={(e) => setSignUpGoogleName(e.target.value)}
                   placeholder="e.g. Naledi Sithole"
-                  className="w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary transition"
+                  className="w-full rounded-xl border border-[#e4e1d6] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#14382b] transition"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1">Google Account Email</label>
+                <label className="block text-xs font-semibold text-[#4b5563] mb-1">Google Account Email</label>
                 <input
                   type="email"
                   required
-                  id="google-signup-email"
                   value={signUpGoogleEmail}
                   onChange={(e) => setSignUpGoogleEmail(e.target.value)}
                   placeholder="e.g. naledi@gmail.com"
-                  className="w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm outline-none focus:border-primary transition"
+                  className="w-full rounded-xl border border-[#e4e1d6] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#14382b] transition"
                 />
               </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                📧 A verification code will be sent to this email to confirm your account.
-              </p>
               <div className="flex gap-2.5 pt-1">
                 <button
                   type="button"
                   onClick={() => setSignUpGoogleOpen(false)}
-                  className="flex-1 rounded-full bg-muted py-2.5 text-xs font-semibold cursor-pointer hover:bg-muted/80 transition"
+                  className="flex-1 rounded-xl border border-[#e4e1d6] bg-white py-2.5 text-xs font-semibold text-[#4b5563] hover:bg-gray-50 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  id="google-signup-submit-btn"
                   disabled={signUpGoogleLoading}
-                  className="flex-1 rounded-full bg-emerald-600 hover:bg-emerald-700 py-2.5 text-xs font-semibold text-white cursor-pointer disabled:opacity-50 transition shadow-sm"
+                  className="flex-1 rounded-xl bg-[#14382b] hover:bg-[#1b4a3a] py-2.5 text-xs font-semibold text-white cursor-pointer disabled:opacity-50 transition shadow-xs"
                 >
-                  {signUpGoogleLoading ? "Sending code..." : "Send Verification Code"}
-                </button>
-              </div>
-              <div className="text-center pt-1">
-                <button
-                  type="button"
-                  onClick={() => { setSignUpGoogleOpen(false); setMode("signin"); setSignInGoogleOpen(true); }}
-                  className="text-xs text-primary hover:underline font-medium cursor-pointer"
-                >
-                  Already have an account? Sign in →
+                  {signUpGoogleLoading ? "Creating..." : "Create with Google"}
                 </button>
               </div>
             </form>
@@ -810,57 +1151,71 @@ function AuthPage() {
           FORGOT PASSWORD MODAL
           ════════════════════════════════════════════════════════════ */}
       {forgotModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-xl border text-left">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl border border-[#e8e4d8] text-left">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                <div className="h-8 w-8 rounded-lg bg-[#14382b]/10 flex items-center justify-center text-[#14382b]">
                   <KeyRound className="h-4 w-4" />
                 </div>
-                <h2 className="font-display text-lg font-bold">Reset Password</h2>
+                <h2 className="font-display text-lg font-bold text-[#111827]">Reset Password</h2>
               </div>
-              <button type="button" onClick={resetForgotDialog} className="text-muted-foreground hover:text-foreground p-1 rounded transition cursor-pointer">
+              <button
+                type="button"
+                onClick={resetForgotDialog}
+                className="text-[#9ca3af] hover:text-[#111827] p-1 rounded transition cursor-pointer"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {forgotSuccess ? (
               <div className="space-y-4 py-3 text-center">
-                <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10 text-green-500 mx-auto">
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 mx-auto">
                   <CheckCircle2 className="h-6 w-6" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-bold text-sm text-foreground">Password Reset Successful!</h3>
-                  <p className="text-xs text-muted-foreground">{forgotSuccess}</p>
+                  <h3 className="font-bold text-sm text-[#111827]">Password Reset Successful!</h3>
+                  <p className="text-xs text-[#71717a]">{forgotSuccess}</p>
                 </div>
-                <p className="text-[11px] text-primary animate-pulse">Switching to sign in...</p>
+                <p className="text-[11px] text-[#14382b] font-semibold animate-pulse">Switching to sign in...</p>
               </div>
             ) : (
               <>
                 {forgotError && (
-                  <div className="mb-4 rounded-xl bg-destructive/15 p-3 text-xs text-destructive font-medium border border-destructive/25 text-center">
+                  <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs text-red-600 font-medium border border-red-200 text-center">
                     ⚠️ {forgotError}
                   </div>
                 )}
                 {forgotStep === "email" ? (
                   <form onSubmit={handleForgotEmailSubmit} className="space-y-4">
-                    <p className="text-xs text-muted-foreground leading-relaxed">
+                    <p className="text-xs text-[#71717a] leading-relaxed">
                       Enter your account email. A reset code will be sent to your inbox.
                     </p>
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Account Email</label>
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">Account Email</label>
                       <input
                         type="email"
                         required
                         value={forgotEmail}
                         onChange={(e) => setForgotEmail(e.target.value)}
                         placeholder="you@example.com"
-                        className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+                        className="w-full rounded-xl border border-[#e4e1d6] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#14382b]"
                       />
                     </div>
                     <div className="flex gap-2.5 pt-2">
-                      <button type="button" onClick={resetForgotDialog} className="flex-1 rounded-full bg-muted py-2.5 text-xs font-medium cursor-pointer">Cancel</button>
-                      <button type="submit" disabled={forgotLoading} className="flex-1 rounded-full bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:brightness-110 cursor-pointer disabled:opacity-50">
+                      <button
+                        type="button"
+                        onClick={resetForgotDialog}
+                        className="flex-1 rounded-xl border border-[#e4e1d6] bg-white py-2.5 text-xs font-semibold text-[#4b5563] cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={forgotLoading}
+                        className="flex-1 rounded-xl bg-[#14382b] py-2.5 text-xs font-semibold text-white hover:bg-[#1b4a3a] cursor-pointer disabled:opacity-50 shadow-xs"
+                      >
                         {forgotLoading ? "Checking..." : "Send Reset Code"}
                       </button>
                     </div>
@@ -868,14 +1223,18 @@ function AuthPage() {
                 ) : (
                   <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5">
                     <div className="flex items-center justify-between">
-                      <button type="button" onClick={() => { setForgotStep("email"); setForgotError(""); }} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
+                      <button
+                        type="button"
+                        onClick={() => { setForgotStep("email"); setForgotError(""); }}
+                        className="inline-flex items-center gap-1 text-xs text-[#71717a] hover:text-[#111827] cursor-pointer"
+                      >
                         <ArrowLeft className="h-3 w-3" /> Change email
                       </button>
-                      <span className="text-[11px] text-muted-foreground font-mono">{forgotEmail}</span>
+                      <span className="text-[11px] text-[#71717a] font-mono">{forgotEmail}</span>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">Check your inbox for the 6-digit reset code.</p>
+                    <p className="text-[11px] text-[#71717a]">Check your inbox for the 6-digit reset code.</p>
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Reset Code</label>
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">Reset Code</label>
                       <input
                         type="text"
                         required
@@ -883,20 +1242,46 @@ function AuthPage() {
                         value={forgotPin}
                         onChange={(e) => setForgotPin(e.target.value)}
                         placeholder="123456"
-                        className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none tracking-widest font-mono focus:border-primary"
+                        className="w-full rounded-xl border border-[#e4e1d6] bg-white px-3.5 py-2.5 text-sm outline-none tracking-widest font-mono focus:border-[#14382b]"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">New Password</label>
-                      <input type="password" required minLength={6} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="At least 6 characters" className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">New Password</label>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="At least 6 characters"
+                        className="w-full rounded-xl border border-[#e4e1d6] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#14382b]"
+                      />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-muted-foreground mb-1">Confirm New Password</label>
-                      <input type="password" required minLength={6} value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} placeholder="Repeat new password" className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
+                      <label className="block text-xs font-semibold text-[#4b5563] mb-1">Confirm New Password</label>
+                      <input
+                        type="password"
+                        required
+                        minLength={6}
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                        placeholder="Repeat new password"
+                        className="w-full rounded-xl border border-[#e4e1d6] bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#14382b]"
+                      />
                     </div>
                     <div className="flex gap-2.5 pt-2">
-                      <button type="button" onClick={resetForgotDialog} className="flex-1 rounded-full bg-muted py-2.5 text-xs font-medium cursor-pointer">Cancel</button>
-                      <button type="submit" disabled={forgotLoading} className="flex-1 rounded-full bg-primary py-2.5 text-xs font-semibold text-primary-foreground hover:brightness-110 cursor-pointer disabled:opacity-50">
+                      <button
+                        type="button"
+                        onClick={resetForgotDialog}
+                        className="flex-1 rounded-xl border border-[#e4e1d6] bg-white py-2.5 text-xs font-semibold text-[#4b5563] cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={forgotLoading}
+                        className="flex-1 rounded-xl bg-[#14382b] py-2.5 text-xs font-semibold text-white hover:bg-[#1b4a3a] cursor-pointer disabled:opacity-50 shadow-xs"
+                      >
                         {forgotLoading ? "Updating..." : "Save New Password"}
                       </button>
                     </div>
@@ -908,25 +1293,5 @@ function AuthPage() {
         </div>
       )}
     </div>
-  );
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-function RoleCard({ active, onClick, emoji, label, sub }: { active: boolean; onClick: () => void; emoji: string; label: string; sub: string }) {
-  return (
-    <button type="button" onClick={onClick} className={`rounded-2xl border-2 p-4 text-left transition cursor-pointer ${active ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/40"}`}>
-      <div className="text-2xl">{emoji}</div>
-      <div className="mt-2 font-semibold">{label}</div>
-      <div className="text-xs text-muted-foreground">{sub}</div>
-    </button>
-  );
-}
-
-function Field({ label, value, onChange, type = "text", placeholder, id }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; id?: string }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-medium text-muted-foreground">{label}</span>
-      <input id={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" />
-    </label>
   );
 }
