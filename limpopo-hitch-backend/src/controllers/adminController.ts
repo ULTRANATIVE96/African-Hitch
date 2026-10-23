@@ -8,33 +8,38 @@ const prisma = new PrismaClient();
 
 export async function adminLogin(req: Request, res: Response, next: NextFunction) {
   try {
+    // Guard: refuse to authenticate if required config is absent
+    if (!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD || !process.env.ADMIN_JWT_SECRET) {
+      return res.status(503).json({ error: "Admin authentication is not configured on this server." });
+    }
+
     const { username, password } = req.body;
-    const cleanUser = String(username || "").trim().toLowerCase();
-    const cleanPass = String(password || "");
 
-    const validUsernames = [
-      ENV.ADMIN_USERNAME.toLowerCase(),
-      "dac-admin",
-      "dac_admin",
-      "admin",
-    ];
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password are required." });
+    }
 
-    const validPasswords = [
-      ENV.ADMIN_PASSWORD,
-      "DACtech2025!",
-      "password",
-      "ChangeMeToASecurePassword2026!",
-    ];
+    // Normalise username: trim whitespace, compare lowercase
+    const submittedUser = String(username).trim().toLowerCase();
+    // Password is compared as-is (spaces may be intentional)
+    const submittedPass = String(password);
 
-    const isUserValid = validUsernames.includes(cleanUser);
-    const isPassValid = validPasswords.includes(cleanPass) || cleanPass === ENV.ADMIN_PASSWORD;
+    const configuredUser = ENV.ADMIN_USERNAME.trim().toLowerCase();
+    const configuredPass = ENV.ADMIN_PASSWORD; // never trim; never log
+
+    const isUserValid = submittedUser === configuredUser;
+    const isPassValid = submittedPass === configuredPass;
 
     if (isUserValid && isPassValid) {
-      const token = jwt.sign({ role: "ADMIN", username: cleanUser }, ENV.ADMIN_JWT_SECRET, { expiresIn: "7d" });
+      const token = jwt.sign(
+        { role: "ADMIN", username: configuredUser },
+        ENV.ADMIN_JWT_SECRET,
+        { expiresIn: "7d" }
+      );
       return res.json({ token, role: "ADMIN" });
     }
 
-    return res.status(401).json({ error: "Invalid admin credentials" });
+    return res.status(401).json({ error: "Invalid admin credentials." });
   } catch (err) {
     next(err);
   }
@@ -44,6 +49,25 @@ export async function getAllUsersAdmin(req: Request, res: Response, next: NextFu
   try {
     const users = await prisma.user.findMany({
       orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        googleEmail: true,
+        role: true,
+        phone: true,
+        avatar: true,
+        profilePhoto: true,
+        rating: true,
+        completedRides: true,
+        vehicle: true,
+        plate: true,
+        seats: true,
+        banned: true,
+        verified: true,
+        createdAt: true,
+        // password, verificationPin, and vehiclePhoto intentionally omitted
+      },
     });
     return res.json(users);
   } catch (err) {

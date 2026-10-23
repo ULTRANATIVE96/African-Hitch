@@ -4,7 +4,7 @@
  * Replaces all direct Zustand state reads/writes.
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, getStoredToken } from "./api-client";
+import { api, adminApi, getStoredToken } from "./api-client";
 
 // ─── Types (mirror the backend entities) ─────────────────────────────────────
 export type Role = "hiker" | "driver";
@@ -107,6 +107,41 @@ export function useAllUsers() {
     enabled: typeof window !== "undefined",
   });
 }
+
+// ─── Admin-only user type (richer than ApiUser — includes verified + createdAt) ─
+export interface ApiAdminUser {
+  id: string;
+  name: string;
+  email?: string;
+  googleEmail?: string;
+  role: Role;
+  phone?: string;
+  avatar?: string;
+  profilePhoto?: string;
+  rating: number;
+  completedRides: number;
+  vehicle?: string;
+  plate?: string;
+  seats?: number;
+  banned: boolean;
+  verified: boolean;
+  createdAt: string; // ISO datetime from PostgreSQL
+}
+
+// Calls GET /api/admin/users — requires admin JWT (dac_admin_token)
+export function useAdminUsers() {
+  return useQuery<ApiAdminUser[]>({
+    queryKey: ["admin", "users"],
+    queryFn: async () => {
+      const res = await adminApi.get("/admin/users");
+      return res.data;
+    },
+    enabled: typeof window !== "undefined",
+    // Surface errors — do not silently swallow them
+    retry: 1,
+  });
+}
+
 
 export function useCurrentUser() {
   return useQuery<ApiUser>({

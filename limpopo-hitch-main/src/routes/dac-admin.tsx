@@ -19,12 +19,10 @@ import {
   MapPin,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
-import type { ApiUser } from "@/lib/api-hooks";
-import { useAllUsers, useFlags, usePostsFeed, useMyRequests } from "@/lib/api-hooks";
+import type { ApiUser, ApiAdminUser } from "@/lib/api-hooks";
+import { useAdminUsers, useFlags, usePostsFeed, useMyRequests } from "@/lib/api-hooks";
 
-// ─── Credentials ─────────────────────────────────────────────────────────────
-const ADMIN_USERNAME = "dac-admin";
-const ADMIN_PASSWORD = "DACtech2025!";
+// ─── Session Key ─────────────────────────────────────────────────────────────
 const ADMIN_SESSION_KEY = "dac_admin_session";
 
 export const Route = createFileRoute("/dac-admin")({
@@ -72,17 +70,11 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
     setError("");
     setLoading(true);
 
-    const cleanUser = username.trim().toLowerCase();
-    const cleanPass = password;
-
-    const acceptedUsers = ["dac-admin", "dac_admin", "admin"];
-    const acceptedPasswords = ["DACtech2025!", "password", "ChangeMeToASecurePassword2026!"];
-
     try {
-      // 1. Authenticate with backend API
+      // Authenticate exclusively via the backend API — no client-side fallback
       const res = await api.post("/admin/login", {
-        username: cleanUser,
-        password: cleanPass,
+        username: username.trim().toLowerCase(),
+        password,
       });
 
       if (res.data?.token) {
@@ -94,17 +86,10 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
         onLogin();
         return;
       }
-    } catch (err: any) {
-      // 2. Client-side fallback check (for offline/standalone use)
-      if (acceptedUsers.includes(cleanUser) && acceptedPasswords.includes(cleanPass)) {
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
-          localStorage.setItem(ADMIN_SESSION_KEY, "true");
-        }
-        onLogin();
-        return;
-      }
 
+      // Backend returned 2xx but no token — treat as failure
+      setError("Authentication failed. Please try again.");
+    } catch (err: any) {
       const errMsg =
         err?.response?.data?.error ||
         "Invalid credentials. Please verify your admin username and password.";
@@ -190,10 +175,7 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
           </button>
         </form>
 
-        <div className="mt-6 text-center space-y-1.5">
-          <p className="text-[11px] text-slate-500">
-            Default credentials: <code className="text-violet-400 font-mono">dac-admin</code> / <code className="text-violet-400 font-mono">DACtech2025!</code>
-          </p>
+        <div className="mt-6 text-center">
           <p className="text-[10px] text-slate-600">
             Session expires automatically upon closing tab or signing out.
           </p>
@@ -287,7 +269,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 // STATS TAB
 // ════════════════════════════════════════════════════════════════════════════
 function StatsTab() {
-  const { data: users = [] } = useAllUsers();
+  const { data: users = [], error: usersError } = useAdminUsers();
   const { data: flags = [] } = useFlags();
   const { data: posts = [] } = usePostsFeed();
 
@@ -386,14 +368,14 @@ function StatsTab() {
 // USERS TAB (WITH TIMED BANS)
 // ════════════════════════════════════════════════════════════════════════════
 function UsersTab() {
-  const { data: users = [] } = useAllUsers();
+  const { data: users = [], isLoading, error: usersError } = useAdminUsers();
   const { data: flags = [] } = useFlags();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "banned" | "driver" | "hiker">("all");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // Timed ban modal state — admin actions via API not yet implemented; show UI only
-  const [banModalUser, setBanModalUser] = useState<ApiUser | null>(null);
+  const [banModalUser, setBanModalUser] = useState<ApiAdminUser | null>(null);
   const [banDuration, setBanDuration] = useState<number | "permanent">(24);
   const [banReason, setBanReason] = useState("");
 
@@ -430,6 +412,20 @@ function UsersTab() {
 
   return (
     <div className="space-y-4">
+      {usersError && (
+        <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-4 text-sm text-red-400 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            Failed to load users:{" "}
+            {(usersError as any)?.response?.data?.error ||
+              (usersError as any)?.message ||
+              "Unknown error — check that the admin token is valid."}
+          </span>
+        </div>
+      )}
+      {isLoading && (
+        <p className="text-slate-500 text-sm text-center py-8">Loading users...</p>
+      )}
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <div>
           <h2 className="text-white text-lg font-bold">User Management & Timed Bans</h2>
@@ -639,7 +635,7 @@ function UsersTab() {
 function TrackingTab() {
   const { data: requestsRaw = [] } = useMyRequests();
   const { data: posts = [] } = usePostsFeed();
-  const { data: users = [] } = useAllUsers();
+  const { data: users = [] } = useAdminUsers();
   const requests = requestsRaw as any[];
 
   const [statusFilter, setStatusFilter] = useState<"all" | "accepted" | "completed" | "pending">("all");
@@ -857,7 +853,7 @@ function TrackingTab() {
 // ════════════════════════════════════════════════════════════════════════════
 function FlagsTab() {
   const { data: flags = [] } = useFlags();
-  const { data: users = [] } = useAllUsers();
+  const { data: users = [] } = useAdminUsers();
   // removeFlag via API not yet implemented; show note to admin
 
   return (
@@ -906,7 +902,7 @@ function FlagsTab() {
 // APPEALS TAB
 // ════════════════════════════════════════════════════════════════════════════
 function AppealsTab() {
-  const { data: users = [] } = useAllUsers();
+  const { data: users = [] } = useAdminUsers();
   // Appeals via API not yet implemented; show placeholder
   const appeals: any[] = [];
   const [expanded, setExpanded] = useState<string | null>(null);
